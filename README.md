@@ -1,36 +1,127 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Zuvigo
 
-## Getting Started
+Professional Notion-inspired SaaS workspace (Next.js 16 + MySQL + Redis + DigitalOcean Spaces).
 
-First, run the development server:
+## Setup
+
+1. Copy env:
+
+```bash
+cp .env.example .env.local
+```
+
+2. Fill MySQL, Redis, `AUTH_SECRET`, and DigitalOcean Spaces values.
+
+3. Install & migrate:
+
+```bash
+npm install
+npm run db:migrate
+```
+
+4. Run app (and optionally the worker):
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run worker
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open `http://localhost:3000` — sign up creates a user + default workspace in MySQL.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Client demo
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Seed a polished showcase workspace (projects, tasks, subtasks, tags, comments, pages):
 
-## Learn More
+```bash
+npm run db:migrate
+npm run db:seed
+```
 
-To learn more about Next.js, take a look at the following resources:
+Then open `http://localhost:3000/login`:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| | |
+|---|---|
+| Email | `demo@zuvigo.test` |
+| Password | `Demo1234!` |
+| Workspace | `/w/acme-demo` |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Teammates (same password): `alex@zuvigo.test`, `sam@zuvigo.test`. Re-run `npm run db:seed` anytime to reset the demo.
 
-## Deploy on Vercel
+## Production (EC2 + nginx + PM2)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This app is a **Next.js monolith** — UI, Server Actions, and `/api/*` all run in one process. There is **no separate API server**. nginx proxies `https://todo.zuvigo.com` → `127.0.0.1:3000`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 1. Server prep
+
+- Node 20+, nginx, MySQL, PM2 (`npm i -g pm2`)
+- DNS: `todo.zuvigo.com` A-record → EC2 IP; security group **80/443** (not 3306)
+- Create DB user (not root):
+
+```sql
+CREATE DATABASE zuvigotodo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'zuvigo'@'127.0.0.1' IDENTIFIED BY 'STRONG_PASSWORD_HERE';
+GRANT ALL ON zuvigotodo.* TO 'zuvigo'@'127.0.0.1';
+FLUSH PRIVILEGES;
+```
+
+### 2. App + env
+
+```bash
+cd /var/www/zuvigotodo   # or your deploy path
+git clone <repo> .
+npm ci
+cp .env.example .env.local
+# edit .env.local — required:
+#   APP_URL=https://todo.zuvigo.com
+#   NODE_ENV=production
+#   AUTH_SECRET=$(openssl rand -base64 48)
+#   DATABASE_* + DO_SPACES_*
+```
+
+### 3. Migrate (production-safe) + build
+
+```bash
+npm run db:migrate   # idempotent; only applies new migrations
+# optional staging demo: npm run db:seed
+npm run build
+```
+
+### 4. PM2
+
+```bash
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 startup
+curl -s http://127.0.0.1:3000/api/health
+```
+
+### 5. nginx + TLS
+
+```bash
+sudo cp deploy/nginx.todo.zuvigo.com.conf /etc/nginx/sites-available/todo.zuvigo.com
+sudo ln -sf /etc/nginx/sites-available/todo.zuvigo.com /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d todo.zuvigo.com
+```
+
+After certbot, confirm HTTPS loads and `https://todo.zuvigo.com/api/health` is OK.
+
+### 6. Redeploy updates
+
+```bash
+cd /var/www/zuvigotodo
+git pull
+npm ci
+npm run db:migrate
+npm run build
+pm2 restart zuvigo-todo
+```
+
+## Architecture
+
+- `modules/` — domain services/repositories
+- `infrastructure/` — MySQL, Redis, Spaces, queue, email/AI stubs
+- `shared/` — errors, logger, pagination, cache, rate-limit
+- `app/` — UI + route handlers
+
+Phase 1–2 is production-complete for auth, workspaces, RBAC, files (Spaces), and the app shell. Pages/editor DnD, tasks, AI, billing are scaffolded with real schema and honest empty states.
