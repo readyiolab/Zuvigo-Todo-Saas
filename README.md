@@ -49,7 +49,7 @@ Teammates (same password): `alex@zuvigo.test`, `sam@zuvigo.test`. Re-run `npm ru
 
 ## Production (EC2 + nginx + PM2)
 
-This app is a **Next.js monolith** — UI, Server Actions, and `/api/*` all run in one process. There is **no separate API server**. nginx proxies `https://todo.zuvigo.com` → `127.0.0.1:3000`.
+This app is a **Next.js monolith** — UI, Server Actions, and `/api/*` all run in one process. There is **no separate API server**. nginx proxies `https://todo.zuvigo.com` → `127.0.0.1:3017` (port **3017** avoids clashes with other PM2 apps on `:3000`).
 
 ### 1. Server prep
 
@@ -92,7 +92,7 @@ npm run build
 pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup
-curl -s http://127.0.0.1:3000/api/health
+curl -s http://127.0.0.1:3017/api/health
 ```
 
 ### 5. nginx + TLS
