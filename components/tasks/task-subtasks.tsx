@@ -270,26 +270,28 @@ export function TaskSubtasks({
 
       {canCreate ? (
         showComposer || items.length > 0 ? (
-          <div className="flex items-center gap-1.5 pt-1">
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Add sub-task…"
-              className="h-8 border-0 bg-transparent px-0 text-[13px] shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring/30"
-              disabled={pending}
-              autoFocus={showComposer && items.length === 0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  add();
-                }
-              }}
-            />
+          <div className="flex items-center gap-2 pt-2">
+            <div className="flex flex-1 items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-1 transition-colors focus-within:border-primary focus-within:bg-background focus-within:ring-1 focus-within:ring-primary/20">
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Add an item to the checklist…"
+                className="h-7 flex-1 border-0 bg-transparent p-0 text-xs shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
+                disabled={pending}
+                autoFocus={showComposer && items.length === 0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    add();
+                  }
+                }}
+              />
+            </div>
             <Button
               type="button"
-              size="xs"
-              variant="ghost"
-              className="h-7 text-muted-foreground"
+              size="sm"
+              variant="secondary"
+              className="h-9 px-3 text-xs font-medium"
               disabled={pending || !title.trim()}
               onClick={add}
             >
@@ -299,14 +301,14 @@ export function TaskSubtasks({
         ) : (
           <button
             type="button"
-            className="mt-0.5 rounded-sm text-[13px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30"
+            className="mt-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
             onClick={() => setShowComposer(true)}
           >
-            + Add sub-task
+            + Add checklist item
           </button>
         )
       ) : items.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">No subtasks</p>
+        <p className="text-xs text-muted-foreground">No checklist items yet</p>
       ) : null}
     </div>
   );

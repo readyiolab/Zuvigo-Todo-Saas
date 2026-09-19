@@ -1,8 +1,8 @@
-import { execute } from "@/infrastructure/database/connection";
 import {
   findUserByEmail,
   findUserById,
-} from "@/modules/auth/auth.repository";
+  updateUserData,
+} from "@/modules/users/user.repository";
 import { updateProfileSchema } from "@/modules/users/user.schema";
 import { toPublicUser } from "@/modules/users/user.types";
 import {
@@ -27,17 +27,11 @@ export async function updateUserProfile(userId: string, raw: unknown) {
     }
   }
 
-  await execute(
-    `UPDATE tbl_users
-     SET name = :name,
-         email = COALESCE(:email, email)
-     WHERE id = :userId AND deleted_at IS NULL`,
-    {
-      userId,
-      name: parsed.data.name,
-      email: parsed.data.email?.toLowerCase() ?? null,
-    }
-  );
+  await updateUserData({
+    userId,
+    name: parsed.data.name,
+    email: parsed.data.email?.toLowerCase() ?? null,
+  });
 
   const updated = await findUserById(userId);
   if (!updated) throw notFoundError("User not found");

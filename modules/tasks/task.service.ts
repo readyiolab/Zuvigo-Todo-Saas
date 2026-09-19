@@ -43,7 +43,7 @@ import {
   softDeleteTaskAttachment,
   updateTaskRecord,
 } from "@/modules/tasks/task.repository";
-import { query, type RowDataPacket } from "@/infrastructure/database/connection";
+import { assertReadyFileInWorkspace } from "@/modules/files/file.service";
 
 export type { TaskRecord, TaskStatus };
 
@@ -578,16 +578,7 @@ export async function attachFileToTask(
   const task = await findTaskById(input.taskId, input.workspaceId);
   if (!task) throw notFoundError("Task not found");
 
-  type FileRow = RowDataPacket & { id: string; status: string };
-  const files = await query<FileRow[]>(
-    `SELECT id, status FROM tbl_files
-     WHERE id = :fileId AND workspace_id = :workspaceId AND deleted_at IS NULL
-     LIMIT 1`,
-    { fileId: input.fileId, workspaceId: input.workspaceId }
-  );
-  if (!files[0] || files[0].status !== "ready") {
-    throw notFoundError("File not found");
-  }
+  await assertReadyFileInWorkspace(input.fileId, input.workspaceId);
 
   await attachFileToTaskRecord({
     workspaceId: input.workspaceId,

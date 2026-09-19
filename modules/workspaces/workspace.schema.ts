@@ -13,6 +13,17 @@ export const updateWorkspaceSchema = z.object({
 export const inviteMemberSchema = z.object({
   email: z.string().trim().email().max(255),
   role: z.enum(["ADMIN", "MEMBER", "GUEST"]).default("MEMBER"),
+  scope: z.enum(["workspace", "page"]).default("workspace"),
+  pageId: z.string().min(1).optional(),
+  pagePermission: z.enum(["view", "comment", "edit", "full"]).optional(),
+});
+
+export const inviteMembersBatchSchema = z.object({
+  emails: z.array(z.string().trim().email().max(255)).min(1).max(20),
+  role: z.enum(["ADMIN", "MEMBER", "GUEST"]).default("MEMBER"),
+  scope: z.enum(["workspace", "page"]).default("workspace"),
+  pageId: z.string().min(1).optional(),
+  pagePermission: z.enum(["view", "comment", "edit", "full"]).optional(),
 });
 
 export const updateMemberRoleSchema = z.object({

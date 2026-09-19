@@ -1,5 +1,7 @@
-import type { RowDataPacket } from "mysql2";
-import { query } from "@/infrastructure/database/connection";
+import {
+  findActivityByResource,
+  type ActivityLogRow,
+} from "@/modules/activity/activity.repository";
 import { assertWorkspaceAccess } from "@/modules/workspaces/workspace.service";
 
 export { insertActivity } from "@/modules/workspaces/workspace.repository";
@@ -26,34 +28,14 @@ export async function listActivityForResource(input: {
     permission: "workspace.read",
   });
 
-  const limit = Math.max(1, Math.min(input.limit ?? 50, 100));
-
-  type Row = RowDataPacket & {
-    id: string;
-    action: string;
-    actor_user_id: string | null;
-    actor_name: string | null;
-    metadata: string | Record<string, unknown> | null;
-    created_at: Date;
-  };
-
-  const rows = await query<Row[]>(
-    `SELECT a.id, a.action, a.actor_user_id, u.name AS actor_name, a.metadata, a.created_at
-     FROM tbl_activity_logs a
-     LEFT JOIN tbl_users u ON u.id = a.actor_user_id
-     WHERE a.workspace_id = :workspaceId
-       AND a.resource_type = :resourceType
-       AND a.resource_id = :resourceId
-     ORDER BY a.created_at DESC
-     LIMIT ${limit}`,
-    {
-      workspaceId: input.workspaceId,
-      resourceType: input.resourceType,
-      resourceId: input.resourceId,
-    }
+  const rows = await findActivityByResource(
+    input.workspaceId,
+    input.resourceType,
+    input.resourceId,
+    input.limit ?? 50
   );
 
-  return rows.map((r): ActivityItem => {
+  return rows.map((r: ActivityLogRow): ActivityItem => {
     let metadata: Record<string, unknown> | null = null;
     if (typeof r.metadata === "string") {
       try {

@@ -207,6 +207,7 @@ export async function createInvitation(input: {
   tokenHash: string;
   invitedBy: string;
   expiresAt: Date;
+  metadata?: Record<string, unknown> | null;
 }) {
   const existing = await query<RowDataPacket[]>(
     `SELECT id FROM tbl_workspace_invitations
@@ -224,8 +225,8 @@ export async function createInvitation(input: {
   const id = createId();
   await execute(
     `INSERT INTO tbl_workspace_invitations
-      (id, workspace_id, email, role, token_hash, status, invited_by, expires_at)
-     VALUES (:id, :workspaceId, :email, :role, :tokenHash, 'pending', :invitedBy, :expiresAt)`,
+      (id, workspace_id, email, role, token_hash, status, invited_by, expires_at, metadata)
+     VALUES (:id, :workspaceId, :email, :role, :tokenHash, 'pending', :invitedBy, :expiresAt, :metadata)`,
     {
       id,
       workspaceId: input.workspaceId,
@@ -234,6 +235,7 @@ export async function createInvitation(input: {
       tokenHash: input.tokenHash,
       invitedBy: input.invitedBy,
       expiresAt: input.expiresAt,
+      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
     }
   );
   return id;
@@ -274,12 +276,40 @@ export async function findInvitationByTokenHash(tokenHash: string) {
     role: "ADMIN" | "MEMBER" | "GUEST";
     status: string;
     expires_at: Date;
+    metadata: string | Record<string, unknown> | null;
   };
   const rows = await query<Row[]>(
     `SELECT * FROM tbl_workspace_invitations WHERE token_hash = :tokenHash LIMIT 1`,
     { tokenHash }
   );
   return rows[0] ?? null;
+}
+
+export function parseInvitationMetadata(
+  raw: string | Record<string, unknown> | null | undefined
+): {
+  pageId?: string;
+  pagePermission?: "view" | "comment" | "edit" | "full";
+} | null {
+  if (raw == null) return null;
+  try {
+    const parsed =
+      typeof raw === "string" ? (JSON.parse(raw) as Record<string, unknown>) : raw;
+    if (!parsed || typeof parsed !== "object") return null;
+    const pageId =
+      typeof parsed.pageId === "string" ? parsed.pageId : undefined;
+    const pagePermission =
+      parsed.pagePermission === "view" ||
+      parsed.pagePermission === "comment" ||
+      parsed.pagePermission === "edit" ||
+      parsed.pagePermission === "full"
+        ? parsed.pagePermission
+        : undefined;
+    if (!pageId && !pagePermission) return null;
+    return { pageId, pagePermission };
+  } catch {
+    return null;
+  }
 }
 
 export async function acceptInvitation(input: {

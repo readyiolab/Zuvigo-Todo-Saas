@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { ensureRedisConnected } from "@/infrastructure/redis/client";
 import {
   createUser,
+  findSessionByTokenHash,
   findUserByEmail,
   findUserById,
   insertSessionRecord,
@@ -179,18 +180,7 @@ export async function getSessionUser() {
     // fall through to MySQL session table
   }
 
-  const { query } = await import("@/infrastructure/database/connection");
-  type SessionRow = import("mysql2").RowDataPacket & {
-    user_id: string;
-    revoked_at: Date | null;
-    expires_at: Date;
-  };
-  const rows = await query<SessionRow[]>(
-    `SELECT user_id, revoked_at, expires_at FROM tbl_sessions
-     WHERE token_hash = :tokenHash LIMIT 1`,
-    { tokenHash }
-  );
-  const session = rows[0];
+  const session = await findSessionByTokenHash(tokenHash);
   if (!session || session.revoked_at) return null;
   if (new Date(session.expires_at).getTime() < Date.now()) return null;
 

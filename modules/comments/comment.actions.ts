@@ -54,6 +54,7 @@ export async function createCommentAction(input: {
   targetId: string;
   body: string;
   fileIds?: string[];
+  mentions?: Array<{ type: "person" | "page" | "date"; id: string; label: string }>;
 }): Promise<ActionResult> {
   try {
     const user = await requireUser();
@@ -63,6 +64,7 @@ export async function createCommentAction(input: {
       targetId: input.targetId,
       body: input.body,
       fileIds: input.fileIds ?? [],
+      mentions: input.mentions ?? [],
     });
     revalidateCommentTarget(
       input.workspaceSlug,

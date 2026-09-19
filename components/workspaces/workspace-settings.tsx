@@ -1,18 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { MoreHorizontal, Users } from "lucide-react";
-import {
-  archiveWorkspaceAction,
-  inviteMemberAction,
-  removeMemberAction,
-  updateMemberRoleAction,
-  updateWorkspaceAction,
-} from "@/modules/workspaces/workspace.actions";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { NotificationPrefsForm } from "@/components/productivity/notification-prefs-form";
 import type { NotificationPrefs } from "@/modules/productivity/plan.repository";
+import { InviteMentionDialog } from "@/components/invite/invite-mention-dialog";
 import { Screen, ScreenHeader } from "@/components/layout/screen";
 import { ListContainer, ListRow } from "@/components/layout/list-row";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -23,19 +14,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  archiveWorkspaceAction,
+  removeMemberAction,
+  updateMemberRoleAction,
+  updateWorkspaceAction,
+} from "@/modules/workspaces/workspace.actions";
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { MoreHorizontal, Users } from "lucide-react";
 
 type Member = {
   id: string;
@@ -195,7 +188,14 @@ export function WorkspaceSettings({
         )}
 
         {canManage ? (
-          <InviteForm workspaceId={workspaceId} />
+          <div className="pt-2">
+            <InviteMentionDialog
+              workspaceId={workspaceId}
+              canInvite={canManage}
+              plan={subscription.plan}
+              triggerLabel="Invite"
+            />
+          </div>
         ) : (
           <p className="text-caption text-muted-foreground">
             Your role: {role}. Only admins can invite members.
@@ -285,57 +285,5 @@ function MemberRowMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function InviteForm({ workspaceId }: { workspaceId: string }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [role, setRole] = useState("MEMBER");
-
-  return (
-    <form
-      className="flex flex-col gap-3 sm:flex-row sm:items-end"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const formData = new FormData(e.currentTarget);
-        formData.set("role", role);
-        const form = e.currentTarget;
-        startTransition(async () => {
-          await inviteMemberAction(workspaceId, formData);
-          form.reset();
-          setRole("MEMBER");
-          router.refresh();
-        });
-      }}
-    >
-      <div className="min-w-0 flex-1 space-y-2">
-        <Label htmlFor="email">Invite by email</Label>
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          required
-          disabled={pending}
-        />
-      </div>
-      <div className="w-full space-y-2 sm:w-32">
-        <Label>Role</Label>
-        <Select value={role} onValueChange={(v) => setRole(String(v ?? "MEMBER"))}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ADMIN">Admin</SelectItem>
-            <SelectItem value="MEMBER">Member</SelectItem>
-            <SelectItem value="GUEST">Guest</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <Button type="submit" disabled={pending}>
-        {pending ? <Spinner className="size-3.5" /> : null}
-        Invite
-      </Button>
-    </form>
   );
 }

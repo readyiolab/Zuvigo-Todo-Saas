@@ -76,3 +76,22 @@ export async function revokeSessionByTokenHash(tokenHash: string) {
     { tokenHash }
   );
 }
+
+export type SessionRecordRow = {
+  user_id: string;
+  revoked_at: Date | null;
+  expires_at: Date;
+};
+
+export async function findSessionByTokenHash(
+  tokenHash: string
+): Promise<SessionRecordRow | null> {
+  type Row = import("mysql2").RowDataPacket & SessionRecordRow;
+  const rows = await query<Row[]>(
+    `SELECT user_id, revoked_at, expires_at FROM tbl_sessions
+     WHERE token_hash = :tokenHash LIMIT 1`,
+    { tokenHash }
+  );
+  return rows[0] ?? null;
+}
+

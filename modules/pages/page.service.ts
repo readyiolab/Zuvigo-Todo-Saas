@@ -38,6 +38,10 @@ import {
   reorderBlockRows,
 } from "@/modules/pages/page-block.repository";
 import type { ReorderBlocksInput } from "@/modules/editor/editor.types";
+import {
+  assertGuestPageAccess,
+  filterPagesForGuest,
+} from "@/modules/pages/page-permission.service";
 
 export type { PageTreeNode, PageRecord };
 
@@ -69,7 +73,7 @@ function buildTree(pages: PageRecord[], favoriteIds: Set<string>): PageTreeNode[
 }
 
 export async function listPages(workspaceId: string, userId: string) {
-  await assertWorkspaceAccess({
+  const membership = await assertWorkspaceAccess({
     workspaceId,
     userId,
     permission: "pages.read",
@@ -78,16 +82,23 @@ export async function listPages(workspaceId: string, userId: string) {
     listPagesByWorkspace(workspaceId),
     listFavoritePageIds(workspaceId, userId),
   ]);
-  return buildTree(pages, new Set(favorites));
+  const visible = await filterPagesForGuest(
+    workspaceId,
+    userId,
+    membership.role,
+    pages
+  );
+  return buildTree(visible, new Set(favorites));
 }
 
 export async function listPagesFlat(workspaceId: string, userId: string) {
-  await assertWorkspaceAccess({
+  const membership = await assertWorkspaceAccess({
     workspaceId,
     userId,
     permission: "pages.read",
   });
-  return listPagesByWorkspace(workspaceId);
+  const pages = await listPagesByWorkspace(workspaceId);
+  return filterPagesForGuest(workspaceId, userId, membership.role, pages);
 }
 
 export async function getPage(
@@ -95,10 +106,17 @@ export async function getPage(
   pageId: string,
   userId: string
 ) {
-  await assertWorkspaceAccess({
+  const membership = await assertWorkspaceAccess({
     workspaceId,
     userId,
     permission: "pages.read",
+  });
+  await assertGuestPageAccess({
+    workspaceId,
+    pageId,
+    userId,
+    role: membership.role,
+    required: "view",
   });
   const page = await findPageById(pageId, workspaceId);
   if (!page) throw notFoundError("Page not found");
@@ -288,13 +306,14 @@ export async function getRecentPages(
   userId: string,
   limit = 8
 ) {
-  await assertWorkspaceAccess({
+  const membership = await assertWorkspaceAccess({
     workspaceId,
     userId,
     permission: "pages.read",
   });
   try {
-    return await listRecentPages(workspaceId, userId, limit);
+    const pages = await listRecentPages(workspaceId, userId, limit);
+    return filterPagesForGuest(workspaceId, userId, membership.role, pages);
   } catch (error) {
     logger.error("recent_pages_failed", {
       workspaceId,

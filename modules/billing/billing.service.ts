@@ -1,25 +1,13 @@
-import { query, type RowDataPacket } from "@/infrastructure/database/connection";
+import {
+  findSubscriptionByWorkspaceId,
+  type SubscriptionPlan,
+  type SubscriptionStatus,
+} from "@/modules/billing/billing.repository";
 
-export type SubscriptionPlan = "free" | "pro" | "business" | "enterprise";
-export type SubscriptionStatus =
-  | "active"
-  | "canceled"
-  | "past_due"
-  | "trialing"
-  | "incomplete";
+export type { SubscriptionPlan, SubscriptionStatus };
 
 export async function getWorkspaceSubscription(workspaceId: string) {
-  type Row = RowDataPacket & {
-    plan: SubscriptionPlan;
-    status: SubscriptionStatus;
-  };
-  const rows = await query<Row[]>(
-    `SELECT plan, status FROM tbl_subscriptions
-     WHERE workspace_id = :workspaceId
-     LIMIT 1`,
-    { workspaceId }
-  );
-  const row = rows[0];
+  const row = await findSubscriptionByWorkspaceId(workspaceId);
   if (!row) {
     return { plan: "free" as const, status: "active" as const };
   }

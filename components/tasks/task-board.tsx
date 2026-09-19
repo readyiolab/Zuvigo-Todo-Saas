@@ -169,7 +169,7 @@ export function TaskBoard({
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 overflow-x-auto pb-1 md:grid-cols-2 xl:grid-cols-4">
           {BOARD_COLUMNS.map((col) => (
             <BoardColumn
               key={col.status}
@@ -184,14 +184,37 @@ export function TaskBoard({
         </div>
         <DragOverlay>
           {activeTask ? (
-            <div className="rounded-md border bg-card p-2 shadow-raised">
-              <p className="text-body font-medium">{activeTask.title}</p>
+            <div className="w-72 rounded-xl border border-primary/40 bg-card p-3 shadow-2xl ring-2 ring-primary/25 rotate-2">
+              <p className="text-[13px] font-medium leading-snug text-foreground">
+                {activeTask.title}
+              </p>
+              <div className="mt-2 flex items-center gap-1.5">
+                <span className="inline-flex rounded-md bg-muted/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  Moving task
+                </span>
+              </div>
             </div>
           ) : null}
         </DragOverlay>
       </DndContext>
     </div>
   );
+}
+
+function StatusDot({ status }: { status: TaskStatus }) {
+  switch (status) {
+    case "completed":
+      return <span className="size-2 rounded-full bg-emerald-500 shrink-0" />;
+    case "in_progress":
+      return <span className="size-2 rounded-full bg-blue-500 shrink-0" />;
+    case "blocked":
+      return <span className="size-2 rounded-full bg-amber-500 shrink-0" />;
+    case "cancelled":
+      return <span className="size-2 rounded-full bg-muted-foreground/40 shrink-0" />;
+    case "todo":
+    default:
+      return <span className="size-2 rounded-full bg-muted-foreground/50 shrink-0" />;
+  }
 }
 
 function BoardColumn({
@@ -216,16 +239,21 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-h-40 flex-col gap-2 overflow-hidden rounded-xl bg-muted/25 p-2.5",
-        isOver && "ring-2 ring-ring/30"
+        "flex min-h-[450px] min-w-[260px] flex-col gap-3.5 rounded-2xl border border-border/50 bg-muted/20 p-3.5 transition-all shadow-2xs",
+        isOver && "border-primary/50 bg-primary/5 ring-2 ring-primary/20"
       )}
     >
-      <div className={cn("h-0.5 w-full rounded-full", chrome.bar)} />
+      <div className={cn("h-1 w-full rounded-full", chrome.bar)} />
       <div className="flex items-center justify-between gap-2 px-0.5">
-        <h2 className="text-[13px] font-medium text-foreground">{label}</h2>
+        <div className="flex items-center gap-2">
+          <StatusDot status={status} />
+          <h2 className="text-xs font-semibold tracking-tight text-foreground">
+            {label}
+          </h2>
+        </div>
         <span
           className={cn(
-            "inline-flex min-w-5 items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-medium",
+            "inline-flex min-w-5 h-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
             chrome.count
           )}
         >
@@ -236,7 +264,7 @@ function BoardColumn({
         items={tasks.map((t) => t.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="flex flex-1 flex-col gap-1">
+        <div className="flex flex-1 flex-col gap-2.5">
           {tasks.map((task) => (
             <TaskCard
               key={task.id}
@@ -246,6 +274,12 @@ function BoardColumn({
               onOpen={onOpenTask ? () => onOpenTask(task.id) : undefined}
             />
           ))}
+
+          {tasks.length === 0 ? (
+            <div className="flex flex-1 min-h-[120px] items-center justify-center rounded-xl border border-dashed border-border/50 bg-background/30 px-3 py-6 text-center">
+              <p className="text-xs text-muted-foreground/60 font-medium">No tasks in this column</p>
+            </div>
+          ) : null}
         </div>
       </SortableContext>
     </div>

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/modules/auth/auth.service";
+import { getWorkspaceSubscription } from "@/modules/billing/billing.service";
 import { getPage, trackPageVisit } from "@/modules/pages/page.service";
 import { getWorkspaceForUserBySlug } from "@/modules/workspaces/workspace.service";
 import { roleHasPermission } from "@/modules/workspaces/workspace.permissions";
@@ -30,6 +31,8 @@ export default async function PageDetailPage({
 
   const canEdit = roleHasPermission(membership.role, "pages.update");
   const canDelete = roleHasPermission(membership.role, "pages.delete");
+  const canInvite = roleHasPermission(membership.role, "members.invite");
+  const subscription = await getWorkspaceSubscription(workspace.id);
 
   return (
     <Screen density="prose">
@@ -42,6 +45,8 @@ export default async function PageDetailPage({
         isFavorite={payload.page.isFavorite}
         canEdit={canEdit}
         canDelete={canDelete}
+        canInvite={canInvite}
+        plan={subscription.plan}
       />
       <PageEditor
         key={payload.page.id}

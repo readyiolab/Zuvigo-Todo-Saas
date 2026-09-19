@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Copy, MoreHorizontal, Star, Trash2 } from "lucide-react";
+import { Check, Copy, MoreHorizontal, Share2, Star, Trash2 } from "lucide-react";
 import {
   deletePageAction,
   duplicatePageAction,
   toggleFavoriteAction,
   updatePageTitleAction,
 } from "@/modules/pages/page.actions";
+import { SetBreadcrumbs } from "@/components/layout/breadcrumbs";
+import { InviteMentionDialog } from "@/components/invite/invite-mention-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +39,8 @@ export function DocumentTitleBar({
   isFavorite,
   canEdit,
   canDelete,
+  canInvite = false,
+  plan = "free",
   saveStateLabel,
 }: {
   workspaceId: string;
@@ -48,6 +51,8 @@ export function DocumentTitleBar({
   isFavorite: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  canInvite?: boolean;
+  plan?: string;
   saveStateLabel?: string;
 }) {
   const [value, setValue] = useState(title);
@@ -68,117 +73,88 @@ export function DocumentTitleBar({
   }
 
   return (
-    <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        {icon ? (
-          <span className="text-title" aria-hidden>
-            {icon}
-          </span>
-        ) : null}
-        <Input
-          value={value}
-          disabled={!canEdit || pending}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={saveTitle}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-          }}
-          className="border-0 border-b border-transparent px-0 text-title shadow-none focus-visible:border-border focus-visible:ring-0"
-          aria-label="Page title"
-        />
-      </div>
-      <div className="flex items-center gap-1">
-        {saveStateLabel ? (
-          <span className="mr-2 hidden text-caption text-muted-foreground sm:inline">
-            {saveStateLabel}
-          </span>
-        ) : null}
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          aria-label="Favorite"
-          disabled={pending}
-          onClick={() => {
-            startTransition(async () => {
-              const result = await toggleFavoriteAction({
-                workspaceId,
-                workspaceSlug,
-                pageId,
+    <div className="space-y-4 pb-2">
+      {/* Set dynamic breadcrumbs for top bar */}
+      <SetBreadcrumbs
+        crumbs={[
+          { label: "Documents", href: `/w/${workspaceSlug}/pages` },
+          { label: value || "Untitled" },
+        ]}
+      />
+
+      {/* Top Document Action Strip */}
+      <div className="flex items-center justify-between py-1">
+        <div className="flex items-center gap-2">
+          {saveStateLabel ? (
+            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/80">
+              <Check className="size-3 text-muted-foreground/60" />
+              <span>{saveStateLabel}</span>
+            </span>
+          ) : (
+            <span className="text-[11px] text-muted-foreground/60">Saved</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          {canInvite ? (
+            <InviteMentionDialog
+              workspaceId={workspaceId}
+              pageId={pageId}
+              canInvite={canInvite}
+              plan={plan}
+              triggerLabel="Share"
+              triggerVariant="ghost"
+              iconTrigger={<Share2 className="size-3.5" />}
+            />
+          ) : null}
+
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Favorite"
+            disabled={pending}
+            className="size-7 text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              startTransition(async () => {
+                const result = await toggleFavoriteAction({
+                  workspaceId,
+                  workspaceSlug,
+                  pageId,
+                });
+                if (result.success && result.data) {
+                  setFavorited(
+                    Boolean((result.data as { favorited: boolean }).favorited)
+                  );
+                }
               });
-              if (result.success && result.data) {
-                setFavorited(
-                  Boolean((result.data as { favorited: boolean }).favorited)
-                );
-              }
-            });
-          }}
-        >
-          <Star
-            className={cn("size-4", favorited && "fill-warning text-warning")}
-          />
-        </Button>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button type="button" size="icon-sm" variant="ghost" />
-            }
+            }}
           >
-            <MoreHorizontal className="size-4" />
-            <span className="sr-only">More</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {canEdit ? (
-              <DropdownMenuItem
-                onClick={() => {
-                  startTransition(async () => {
-                    await duplicatePageAction({
-                      workspaceId,
-                      workspaceSlug,
-                      pageId,
-                    });
-                  });
-                }}
-              >
-                <Copy className="size-3.5" />
-                Duplicate
-              </DropdownMenuItem>
-            ) : null}
-            {canDelete ? (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <Trash2 className="size-3.5" />
-                  Move to trash
-                </DropdownMenuItem>
-              </>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <Star
+              className={cn("size-3.5", favorited && "fill-warning text-warning")}
+            />
+          </Button>
 
-        {canDelete ? (
-          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <AlertDialogContent className="rounded-lg">
-              <AlertDialogHeader>
-                <AlertDialogTitle className="text-title normal-case tracking-normal">
-                  Move this page to trash?
-                </AlertDialogTitle>
-                <AlertDialogDescription className="text-body">
-                  Nested pages will also move to trash. You can restore them
-                  later.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  variant="destructive"
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  className="size-7 text-muted-foreground hover:text-foreground"
+                />
+              }
+            >
+              <MoreHorizontal className="size-3.5" />
+              <span className="sr-only">More</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44 text-xs">
+              {canEdit ? (
+                <DropdownMenuItem
                   onClick={() => {
                     startTransition(async () => {
-                      await deletePageAction({
+                      await duplicatePageAction({
                         workspaceId,
                         workspaceSlug,
                         pageId,
@@ -186,12 +162,83 @@ export function DocumentTitleBar({
                     });
                   }}
                 >
-                  Move to trash
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                  <Copy className="mr-2 size-3.5" />
+                  Duplicate
+                </DropdownMenuItem>
+              ) : null}
+              {canDelete ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="mr-2 size-3.5" />
+                    Move to trash
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {canDelete ? (
+            <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <AlertDialogContent className="rounded-lg">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-title normal-case tracking-normal">
+                    Move this page to trash?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-body">
+                    Nested pages will also move to trash. You can restore them
+                    later.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    onClick={() => {
+                      startTransition(async () => {
+                        await deletePageAction({
+                          workspaceId,
+                          workspaceSlug,
+                          pageId,
+                        });
+                      });
+                    }}
+                  >
+                    Move to trash
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Notion-style Document Header: Large Icon & Borderless Canvas Title */}
+      <div className="space-y-2 pt-2">
+        {icon ? (
+          <div className="text-4xl" aria-hidden>
+            {icon}
+          </div>
         ) : null}
+        <input
+          value={value}
+          disabled={!canEdit || pending}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={saveTitle}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+          placeholder="Untitled"
+          className={cn(
+            "w-full bg-transparent border-0 p-0 text-3xl sm:text-4xl font-bold tracking-tight text-foreground",
+            "placeholder:text-muted-foreground/30 focus:outline-none focus:ring-0",
+            "disabled:opacity-75"
+          )}
+          aria-label="Page title"
+        />
       </div>
     </div>
   );

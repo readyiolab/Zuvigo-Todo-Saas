@@ -1,21 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
-  CalendarDays,
   CheckSquare,
+  Database,
+  FileText,
   FolderKanban,
   Home,
-  Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function MobileBottomNav({ workspaceSlug }: { workspaceSlug: string }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const base = `/w/${workspaceSlug}`;
-  const preset = searchParams.get("preset");
 
   const items = [
     {
@@ -25,22 +23,22 @@ export function MobileBottomNav({ workspaceSlug }: { workspaceSlug: string }) {
       active: pathname === base,
     },
     {
-      href: `${base}/tasks?preset=assigned`,
-      label: "Inbox",
-      icon: Inbox,
-      active: pathname.startsWith(`${base}/tasks`) && preset === "assigned",
+      href: `${base}/pages`,
+      label: "Pages",
+      icon: FileText,
+      active: pathname.startsWith(`${base}/pages`),
     },
     {
-      href: `${base}/tasks?preset=today`,
-      label: "Today",
+      href: `${base}/tasks`,
+      label: "Tasks",
       icon: CheckSquare,
-      active: pathname.startsWith(`${base}/tasks`) && preset === "today",
+      active: pathname.startsWith(`${base}/tasks`),
     },
     {
-      href: `${base}/calendar`,
-      label: "Calendar",
-      icon: CalendarDays,
-      active: pathname.startsWith(`${base}/calendar`),
+      href: `${base}/databases`,
+      label: "Databases",
+      icon: Database,
+      active: pathname.startsWith(`${base}/databases`),
     },
     {
       href: `${base}/projects`,
@@ -63,9 +61,9 @@ export function MobileBottomNav({ workspaceSlug }: { workspaceSlug: string }) {
               <Link
                 href={item.href}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] font-medium transition-colors",
+                  "flex flex-col items-center gap-0.5 rounded-lg px-1 py-1 text-[10px] font-medium transition-colors",
                   item.active
-                    ? "bg-primary-soft text-primary"
+                    ? "bg-primary-soft text-primary font-semibold"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >

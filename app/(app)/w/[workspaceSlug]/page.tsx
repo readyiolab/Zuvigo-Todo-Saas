@@ -1,16 +1,18 @@
 import Link from "next/link";
 import {
-  AlertCircle,
-  ArrowRight,
-  CalendarClock,
-  CheckCircle2,
-  ListTodo,
+  CalendarDays,
+  CheckSquare,
+  Database,
+  FolderKanban,
+  Sparkles,
 } from "lucide-react";
 import { format } from "date-fns";
 import { requireUser } from "@/modules/auth/auth.service";
 import { getWorkspaceForUserBySlug } from "@/modules/workspaces/workspace.service";
 import { listProjects } from "@/modules/projects/project.service";
 import { listTasks } from "@/modules/tasks/task.service";
+import { listDatabases } from "@/modules/databases/database.service";
+import { getRecentPages } from "@/modules/pages/page.service";
 import { roleHasPermission } from "@/modules/workspaces/workspace.permissions";
 import {
   explainRecommendation,
@@ -19,57 +21,15 @@ import {
 import { getDailyPlan } from "@/modules/productivity/plan.repository";
 import { explainRecommendation as aiExplain } from "@/modules/ai/ai.service";
 import { Screen } from "@/components/layout/screen";
-import { QuickAdd } from "@/components/tasks/quick-add";
+import { RecentPagesGrid } from "@/components/pages/recent-pages-grid";
+import { HomeTaskList } from "@/components/tasks/home-task-list";
 import { TodayHub } from "@/components/productivity/today-hub";
-import { EmptyState } from "@/components/shared/empty-state";
-import { Button } from "@/components/ui/button";
-import { formatDueDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
-}
-
-function SummaryChip({
-  label,
-  value,
-  href,
-  tone,
-  icon: Icon,
-}: {
-  label: string;
-  value: number;
-  href: string;
-  tone: "muted" | "danger" | "info" | "success";
-  icon: React.ComponentType<{ className?: string }>;
-}) {
-  const tones = {
-    muted: "border-border/70 bg-card",
-    danger: "border-destructive/25 bg-destructive-soft/40",
-    info: "border-info/25 bg-info-soft/50",
-    success: "border-success/25 bg-success-soft/50",
-  };
-  return (
-    <Link
-      href={href}
-      className={cn(
-        "flex min-w-0 flex-1 items-center gap-3 rounded-xl border px-3.5 py-3 transition-colors hover:bg-muted/30",
-        tones[tone]
-      )}
-    >
-      <Icon className="size-4 shrink-0 text-muted-foreground" />
-      <div className="min-w-0">
-        <p className="text-lg font-semibold tabular-nums leading-none">
-          {value}
-        </p>
-        <p className="mt-1 truncate text-caption text-muted-foreground">
-          {label}
-        </p>
-      </div>
-    </Link>
-  );
 }
 
 export default async function WorkspaceHomePage({
@@ -89,6 +49,8 @@ export default async function WorkspaceHomePage({
 
   const [
     projects,
+    recentPages,
+    databases,
     todayTasks,
     overdueTasks,
     upcomingTasks,
@@ -97,6 +59,8 @@ export default async function WorkspaceHomePage({
     existingPlan,
   ] = await Promise.all([
     listProjects(workspace.id, user.id),
+    getRecentPages(workspace.id, user.id, 6),
+    listDatabases(workspace.id, user.id),
     listTasks(workspace.id, user.id, { due: "today" }),
     listTasks(workspace.id, user.id, { due: "overdue" }),
     listTasks(workspace.id, user.id, { due: "upcoming" }),
@@ -121,7 +85,7 @@ export default async function WorkspaceHomePage({
         reasons: nextScored.reasons,
       });
     } catch {
-      /* keep heuristic */
+      /* fallback */
     }
   }
 
@@ -138,178 +102,134 @@ export default async function WorkspaceHomePage({
       }
     : null;
 
-  const openToday = todayTasks.filter((t) => t.status !== "completed");
-  const remaining =
-    openToday.length +
-    overdueTasks.filter((t) => t.status !== "completed").length;
-  const greeting = greetingForHour(new Date().getHours());
+  const hour = new Date().getHours();
+  const greeting = greetingForHour(hour);
+  const firstName = user.name.split(" ")[0] || "there";
+  const formattedDate = format(new Date(), "EEEE, MMMM d");
+
+  const projectOptions = projects.map((p) => ({ id: p.id, name: p.name }));
 
   return (
     <Screen>
-      <div className="space-y-6">
-        <div className="space-y-1">
-          <h1 className="text-title tracking-tight">
-            {greeting}, {user.name.split(" ")[0]}
+      <div className="mx-auto max-w-5xl space-y-8 pb-10">
+        {/* Notion-style Friendly Greeting Header */}
+        <div className="space-y-1 pt-2">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            {greeting}, {firstName} 👋
           </h1>
-          <p className="text-caption text-muted-foreground">
-            {workspace.name} · focus on what matters today
+          <p className="text-xs text-muted-foreground">
+            {formattedDate} · {workspace.name}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <SummaryChip
-            label="Remaining"
-            value={remaining}
-            href={`${base}/tasks`}
-            tone="muted"
-            icon={ListTodo}
-          />
-          <SummaryChip
-            label="Completed"
-            value={completedToday.length}
-            href={`${base}/tasks?preset=completed`}
-            tone="success"
-            icon={CheckCircle2}
-          />
-          <SummaryChip
-            label="Overdue"
-            value={overdueTasks.length}
-            href={`${base}/tasks?preset=overdue`}
-            tone="danger"
-            icon={AlertCircle}
-          />
-          <SummaryChip
-            label="Upcoming"
-            value={upcomingTasks.length}
-            href={`${base}/tasks?preset=upcoming`}
-            tone="info"
-            icon={CalendarClock}
+        {/* Recently Visited Pages */}
+        <RecentPagesGrid
+          workspaceId={workspace.id}
+          workspaceSlug={workspaceSlug}
+          pages={recentPages}
+        />
+
+        {/* Quick Tools & Spaces Grid */}
+        <div className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+            Workspaces & Views
+          </h2>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <Link
+              href={`${base}/tasks`}
+              className="flex items-center gap-2.5 rounded-lg border border-border/70 bg-card p-3 transition-all hover:border-border hover:bg-muted/40 hover:shadow-xs"
+            >
+              <div className="flex size-7 shrink-0 items-center justify-center rounded bg-primary/10 text-primary">
+                <CheckSquare className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-foreground">Tasks</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {openTasks.length} open
+                </p>
+              </div>
+            </Link>
+
+            <Link
+              href={`${base}/projects`}
+              className="flex items-center gap-2.5 rounded-lg border border-border/70 bg-card p-3 transition-all hover:border-border hover:bg-muted/40 hover:shadow-xs"
+            >
+              <div className="flex size-7 shrink-0 items-center justify-center rounded bg-primary/10 text-primary">
+                <FolderKanban className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-foreground">Projects</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {projects.length} total
+                </p>
+              </div>
+            </Link>
+
+            <Link
+              href={`${base}/databases`}
+              className="flex items-center gap-2.5 rounded-lg border border-border/70 bg-card p-3 transition-all hover:border-border hover:bg-muted/40 hover:shadow-xs"
+            >
+              <div className="flex size-7 shrink-0 items-center justify-center rounded bg-primary/10 text-primary">
+                <Database className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-foreground">Databases</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {databases.length} active
+                </p>
+              </div>
+            </Link>
+
+            <Link
+              href={`${base}/calendar`}
+              className="flex items-center gap-2.5 rounded-lg border border-border/70 bg-card p-3 transition-all hover:border-border hover:bg-muted/40 hover:shadow-xs"
+            >
+              <div className="flex size-7 shrink-0 items-center justify-center rounded bg-primary/10 text-primary">
+                <CalendarDays className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-foreground">Calendar</p>
+                <p className="text-[10px] text-muted-foreground">Schedule</p>
+              </div>
+            </Link>
+          </div>
+        </div>
+
+        {/* Tasks Section with Notion Tabs and Inline Checkbox */}
+        <div className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+            My Tasks
+          </h2>
+          <HomeTaskList
+            workspaceId={workspace.id}
+            workspaceSlug={workspaceSlug}
+            todayTasks={todayTasks}
+            overdueTasks={overdueTasks}
+            upcomingTasks={upcomingTasks}
+            completedTasks={completedToday}
+            projects={projectOptions}
+            canCreate={canCreate}
           />
         </div>
 
-        <TodayHub
-          workspaceId={workspace.id}
-          workspaceSlug={workspaceSlug}
-          initialNext={initialNext}
-          initialPlan={
-            existingPlan
-              ? { planDate: existingPlan.planDate, slots: existingPlan.slots }
-              : null
-          }
-        />
-
-        <QuickAdd
-          workspaceId={workspace.id}
-          workspaceSlug={workspaceSlug}
-          projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-          canCreate={canCreate}
-          autoFocus
-        />
-
-        <section className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">Today</h2>
-            <Button
-              size="xs"
-              variant="ghost"
-              className="h-7 gap-1 text-muted-foreground"
-              render={<Link href={`${base}/tasks?preset=today`} />}
-            >
-              View all
-              <ArrowRight className="size-3" />
-            </Button>
-          </div>
-
-          {openToday.length === 0 ? (
-            <EmptyState
-              icon={CheckCircle2}
-              title="Nothing scheduled for today"
-              description="You're clear — add a task above or check upcoming work."
-              action={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  render={<Link href={`${base}/tasks?preset=upcoming`} />}
-                >
-                  See upcoming
-                </Button>
+        {/* AI Assistant / Today Hub */}
+        {initialNext ? (
+          <div className="space-y-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 flex items-center gap-1.5">
+              <Sparkles className="size-3 text-primary" />
+              <span>Smart Prioritization</span>
+            </h2>
+            <TodayHub
+              workspaceId={workspace.id}
+              workspaceSlug={workspaceSlug}
+              initialNext={initialNext}
+              initialPlan={
+                existingPlan
+                  ? { planDate: existingPlan.planDate, slots: existingPlan.slots }
+                  : null
               }
             />
-          ) : (
-            <ul className="divide-y divide-border/50 overflow-hidden rounded-xl border border-border/70 bg-card">
-              {openToday.slice(0, 8).map((task) => {
-                const isNext = initialNext?.taskId === task.id;
-                return (
-                  <li key={task.id}>
-                    <Link
-                      href={`${base}/tasks?taskId=${task.id}&preset=today`}
-                      className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-muted/40"
-                    >
-                      <span
-                        className="size-[18px] shrink-0 rounded-[5px] border border-border-strong"
-                        aria-hidden
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-body font-medium">
-                          {task.title}
-                          {isNext ? (
-                            <span className="ml-2 text-[11px] font-normal text-muted-foreground">
-                              Do this next
-                            </span>
-                          ) : null}
-                        </p>
-                        <p className="truncate text-caption text-muted-foreground">
-                          {[
-                            task.dueAt ? formatDueDate(task.dueAt) : null,
-                            task.projectName,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ") || "No due date"}
-                        </p>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-
-        {overdueTasks.length > 0 ? (
-          <section className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-destructive">
-                Overdue
-              </h2>
-              <Button
-                size="xs"
-                variant="ghost"
-                className="h-7"
-                render={<Link href={`${base}/tasks?preset=overdue`} />}
-              >
-                Review
-              </Button>
-            </div>
-            <ul className="divide-y divide-border/50 overflow-hidden rounded-xl border border-destructive/20 bg-card">
-              {overdueTasks.slice(0, 5).map((task) => (
-                <li key={task.id}>
-                  <Link
-                    href={`${base}/tasks?taskId=${task.id}&preset=overdue`}
-                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/40"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-body font-medium">
-                        {task.title}
-                      </p>
-                      <p className="text-caption text-destructive/80">
-                        {task.dueAt ? formatDueDate(task.dueAt) : "Overdue"}
-                      </p>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
+          </div>
         ) : null}
       </div>
     </Screen>

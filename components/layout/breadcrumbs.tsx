@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  Fragment,
   useContext,
   useEffect,
   useMemo,
@@ -94,20 +95,22 @@ export function AppBreadcrumbs({ workspaceName }: { workspaceName: string }) {
 
   return (
     <Breadcrumb className="min-w-0">
-      <BreadcrumbList className="flex-nowrap">
+      <BreadcrumbList className="flex-nowrap text-xs text-muted-foreground">
         {crumbs.map((crumb, index) => {
           const isLast = index === crumbs.length - 1;
           return (
-            <BreadcrumbItem key={`${crumb.label}-${index}`} className="min-w-0">
+            <BreadcrumbItem key={`${crumb.label}-${index}`} className="min-w-0 text-xs">
               {isLast || !crumb.href ? (
-                <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                <BreadcrumbPage className="text-xs font-medium text-foreground">
+                  {crumb.label}
+                </BreadcrumbPage>
               ) : (
-                <>
-                  <BreadcrumbLink render={<Link href={crumb.href} />}>
-                    {crumb.label}
-                  </BreadcrumbLink>
-                  <BreadcrumbSeparator className="ml-1" />
-                </>
+                <BreadcrumbLink className="text-xs" render={<Link href={crumb.href} />}>
+                  {crumb.label}
+                </BreadcrumbLink>
+              )}
+              {!isLast && (
+                <BreadcrumbSeparator className="mx-0.5 text-muted-foreground/50 [&>svg]:size-3" />
               )}
             </BreadcrumbItem>
           );

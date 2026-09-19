@@ -1,5 +1,10 @@
-import type { RowDataPacket } from "mysql2";
-import { execute, query } from "@/infrastructure/database/connection";
+import {
+  countUnreadNotifications,
+  findNotificationsByUser,
+  insertNotificationRecord,
+  updateAllNotificationsRead,
+  updateNotificationRead,
+} from "@/modules/notifications/notification.repository";
 import { assertWorkspaceAccess } from "@/modules/workspaces/workspace.service";
 import { createId } from "@/shared/utils/id";
 import {
@@ -19,7 +24,9 @@ export type NotificationItem = {
 };
 
 function prefAllows(type: string, prefs: NotificationPrefs): boolean {
-  if (type === "task.assigned") return prefs.assignment;
+  if (type === "task.assigned" || type === "comment.mention") {
+    return prefs.assignment;
+  }
   if (type === "task.due_soon" || type === "task.reminder") {
     return prefs.upcomingDeadline;
   }
@@ -48,22 +55,16 @@ export async function insertNotification(input: {
     /* prefs table may be missing before migration — still notify */
   }
 
-  await execute(
-    `INSERT INTO tbl_notifications
-      (id, workspace_id, user_id, type, title, body, resource_type, resource_id)
-     VALUES
-      (:id, :workspaceId, :userId, :type, :title, :body, :resourceType, :resourceId)`,
-    {
-      id: createId(),
-      workspaceId: input.workspaceId,
-      userId: input.userId,
-      type: input.type,
-      title: input.title,
-      body: input.body ?? null,
-      resourceType: input.resourceType ?? null,
-      resourceId: input.resourceId ?? null,
-    }
-  );
+  await insertNotificationRecord({
+    id: createId(),
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    type: input.type,
+    title: input.title,
+    body: input.body ?? null,
+    resourceType: input.resourceType ?? null,
+    resourceId: input.resourceId ?? null,
+  });
 }
 
 export async function listNotificationsForUser(
@@ -77,27 +78,7 @@ export async function listNotificationsForUser(
     permission: "workspace.read",
   });
 
-  type Row = RowDataPacket & {
-    id: string;
-    type: string;
-    title: string;
-    body: string | null;
-    resource_type: string | null;
-    resource_id: string | null;
-    is_read: number;
-    created_at: Date;
-  };
-
-  const rows = await query<Row[]>(
-    `SELECT id, type, title, body, resource_type, resource_id, is_read, created_at
-     FROM tbl_notifications
-     WHERE user_id = :userId
-       AND (workspace_id = :workspaceId OR workspace_id IS NULL)
-       ${options.unreadOnly ? "AND is_read = 0" : ""}
-     ORDER BY created_at DESC
-     LIMIT 100`,
-    { userId, workspaceId }
-  );
+  const rows = await findNotificationsByUser(userId, workspaceId, options);
 
   return rows.map(
     (r): NotificationItem => ({
@@ -120,28 +101,14 @@ export async function getUnreadCount(userId: string, workspaceId: string) {
     permission: "workspace.read",
   });
 
-  type Row = RowDataPacket & { total: number };
-  const rows = await query<Row[]>(
-    `SELECT COUNT(*) AS total
-     FROM tbl_notifications
-     WHERE user_id = :userId
-       AND is_read = 0
-       AND (workspace_id = :workspaceId OR workspace_id IS NULL)`,
-    { userId, workspaceId }
-  );
-  return Number(rows[0]?.total ?? 0);
+  return countUnreadNotifications(userId, workspaceId);
 }
 
 export async function markNotificationRead(
   userId: string,
   notificationId: string
 ) {
-  await execute(
-    `UPDATE tbl_notifications
-     SET is_read = 1, read_at = NOW()
-     WHERE id = :notificationId AND user_id = :userId`,
-    { notificationId, userId }
-  );
+  await updateNotificationRead(userId, notificationId);
 }
 
 export async function markAllNotificationsRead(
@@ -154,12 +121,5 @@ export async function markAllNotificationsRead(
     permission: "workspace.read",
   });
 
-  await execute(
-    `UPDATE tbl_notifications
-     SET is_read = 1, read_at = NOW()
-     WHERE user_id = :userId
-       AND is_read = 0
-       AND (workspace_id = :workspaceId OR workspace_id IS NULL)`,
-    { userId, workspaceId }
-  );
+  await updateAllNotificationsRead(userId, workspaceId);
 }

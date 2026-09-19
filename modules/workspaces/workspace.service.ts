@@ -17,6 +17,7 @@ import {
 import { logger } from "@/shared/logger";
 import { createId } from "@/shared/utils/id";
 import { slugify, uniqueSlug } from "@/shared/utils/slug";
+import { getEnv } from "@/lib/env";
 import {
   canDeleteWorkspace,
   canEditWorkspace,
@@ -37,6 +38,7 @@ import {
   listMembers,
   listPendingInvitations,
   listWorkspacesForUser,
+  parseInvitationMetadata,
   removeMember,
   slugExists,
   softDeleteWorkspace,
@@ -46,9 +48,13 @@ import {
 import {
   createWorkspaceSchema,
   inviteMemberSchema,
+  inviteMembersBatchSchema,
   updateMemberRoleSchema,
   updateWorkspaceSchema,
 } from "@/modules/workspaces/workspace.schema";
+import { findUserByEmail } from "@/modules/auth/auth.repository";
+import { grantPagePermissionToUser } from "@/modules/pages/page-permission.service";
+import { findPageById } from "@/modules/pages/page.repository";
 
 async function invalidateUserWorkspaces(userId: string) {
   await cacheDel(userCacheKey(userId, "workspaces"));
@@ -206,6 +212,16 @@ export async function inviteWorkspaceMember(
   if (!canManageMembers(membership.role)) throw authorizationError();
 
   const email = parsed.data.email.toLowerCase();
+  const scope = parsed.data.scope ?? "workspace";
+  const pageId = parsed.data.pageId;
+  const pagePermission = parsed.data.pagePermission ?? "view";
+
+  if (scope === "page") {
+    if (!pageId) throw validationError("Page is required for page-only invites");
+    const page = await findPageById(pageId, workspaceId);
+    if (!page) throw notFoundError("Page not found");
+  }
+
   const existingPending = await listPendingInvitations(workspaceId);
   const already = existingPending.find((i) => i.email.toLowerCase() === email);
   if (already) {
@@ -216,17 +232,48 @@ export async function inviteWorkspaceMember(
     };
   }
 
+  const existingUser = await findUserByEmail(email);
+  if (existingUser) {
+    const existingMember = await findMembership(workspaceId, existingUser.id);
+    if (existingMember && existingMember.status === "active") {
+      if (scope === "page" && pageId) {
+        await grantPagePermissionToUser({
+          workspaceId,
+          pageId,
+          userId: existingUser.id,
+          permission: pagePermission,
+        });
+        return {
+          invitationId: null,
+          previewToken: undefined,
+          alreadyMember: true as const,
+          pageGranted: true as const,
+        };
+      }
+      throw conflictError("User is already a workspace member");
+    }
+  }
+
+  const role =
+    scope === "page" ? ("GUEST" as const) : parsed.data.role;
+
   const token = randomBytes(32).toString("hex");
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
 
+  const metadata =
+    scope === "page" && pageId
+      ? { pageId, pagePermission, scope: "page" as const }
+      : null;
+
   const invitationId = await createInvitation({
     workspaceId,
     email: parsed.data.email,
-    role: parsed.data.role,
+    role,
     tokenHash,
     invitedBy: userId,
     expiresAt,
+    metadata,
   });
 
   await enqueueJob(
@@ -246,14 +293,78 @@ export async function inviteWorkspaceMember(
     action: "member.invited",
     resourceType: "invitation",
     resourceId: invitationId,
-    metadata: { email: parsed.data.email, role: parsed.data.role },
+    metadata: {
+      email: parsed.data.email,
+      role,
+      scope,
+      pageId: pageId ?? null,
+      pagePermission: scope === "page" ? pagePermission : null,
+    },
   });
 
-  // Return token only in non-production for local testing until email is wired
   return {
     invitationId,
-    previewToken: process.env.NODE_ENV === "production" ? undefined : token,
+    previewToken: getEnv().NODE_ENV === "production" ? undefined : token,
   };
+}
+
+export async function inviteWorkspaceMembersBatch(
+  workspaceId: string,
+  userId: string,
+  raw: unknown
+) {
+  const parsed = inviteMembersBatchSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw validationError("Invalid invitations", parsed.error.flatten());
+  }
+
+  const results: Array<{
+    email: string;
+    ok: boolean;
+    alreadyPending?: boolean;
+    alreadyMember?: boolean;
+    pageGranted?: boolean;
+    error?: string;
+  }> = [];
+
+  for (const email of parsed.data.emails) {
+    try {
+      const data = await inviteWorkspaceMember(workspaceId, userId, {
+        email,
+        role: parsed.data.role,
+        scope: parsed.data.scope,
+        pageId: parsed.data.pageId,
+        pagePermission: parsed.data.pagePermission,
+      });
+      results.push({
+        email,
+        ok: true,
+        alreadyPending: Boolean(
+          data && "alreadyPending" in data && data.alreadyPending
+        ),
+        alreadyMember: Boolean(
+          data && "alreadyMember" in data && data.alreadyMember
+        ),
+        pageGranted: Boolean(
+          data && "pageGranted" in data && data.pageGranted
+        ),
+      });
+    } catch (error) {
+      results.push({
+        email,
+        ok: false,
+        error: error instanceof Error ? error.message : "Invite failed",
+      });
+    }
+  }
+
+  const sent = results.filter((r) => r.ok && !r.alreadyPending && !r.alreadyMember)
+    .length;
+  const pending = results.filter((r) => r.alreadyPending).length;
+  const granted = results.filter((r) => r.pageGranted).length;
+  const failed = results.filter((r) => !r.ok).length;
+
+  return { results, sent, pending, granted, failed };
 }
 
 export async function acceptWorkspaceInvite(userId: string, token: string) {
@@ -281,6 +392,16 @@ export async function acceptWorkspaceInvite(userId: string, token: string) {
     userId,
     role: invitation.role,
   });
+
+  const meta = parseInvitationMetadata(invitation.metadata);
+  if (meta?.pageId && meta.pagePermission) {
+    await grantPagePermissionToUser({
+      workspaceId: invitation.workspace_id,
+      pageId: meta.pageId,
+      userId,
+      permission: meta.pagePermission,
+    });
+  }
 
   await invalidateUserWorkspaces(userId);
   await insertActivity({

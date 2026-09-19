@@ -1,14 +1,14 @@
 import { AppError, toErrorResponse } from "@/shared/errors";
 import { logger } from "@/shared/logger";
 
-export type ActionResult =
-  | { success: true; data?: unknown }
+export type ActionResult<T = unknown> =
+  | { success: true; data?: T }
   | { success: false; error: { code: string; message: string } };
 
-export function failAction(
+export function failAction<T = unknown>(
   error: unknown,
   logEvent = "action_unexpected_error"
-): ActionResult {
+): ActionResult<T> {
   const mapped = toErrorResponse(error);
   if (!(error instanceof AppError)) {
     logger.error(logEvent, {
@@ -28,6 +28,7 @@ export function isRedirectError(error: unknown): boolean {
   );
 }
 
-export function okAction(data?: unknown): ActionResult {
+export function okAction<T = unknown>(data?: T): ActionResult<T> {
   return data === undefined ? { success: true } : { success: true, data };
 }
+

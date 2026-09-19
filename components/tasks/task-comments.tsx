@@ -10,6 +10,7 @@ import {
   updateCommentAction,
 } from "@/modules/comments/comment.actions";
 import { CommentComposer } from "@/components/tasks/comment-composer";
+import { MentionText } from "@/components/mentions/mention-text";
 import {
   CommentAudioPlayer,
   FilePreviewCard,
@@ -27,6 +28,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import type { CommentMention } from "@/lib/mention-helpers";
 
 type CommentAttachment = {
   id: string;
@@ -44,7 +46,10 @@ type Comment = {
   authorName: string;
   createdAt: string | Date;
   attachments?: CommentAttachment[];
+  mentions?: CommentMention[];
 };
+
+type MemberOption = { userId: string; name: string; email: string };
 
 function initials(name: string) {
   return name
@@ -69,12 +74,19 @@ export function TaskComments({
   taskId,
   canComment,
   currentUserId,
+  members = [],
+  hideHeader = false,
+  onCountChange,
 }: {
   workspaceId: string;
   workspaceSlug: string;
   taskId: string;
   canComment: boolean;
   currentUserId?: string;
+  members?: MemberOption[];
+  /** Hide the collapsible header (used when embedded inside a tab) */
+  hideHeader?: boolean;
+  onCountChange?: (count: number) => void;
 }) {
   const [items, setItems] = useState<Comment[]>([]);
   const [open, setOpen] = useState(true);
@@ -92,7 +104,8 @@ export function TaskComments({
       });
       setLoading(false);
       if (!result.success || !result.data) return;
-      setItems((result.data as { comments: Comment[] }).comments);
+      const comments = (result.data as { comments: Comment[] }).comments;
+      setItems(comments);
     });
   }
 
@@ -101,9 +114,14 @@ export function TaskComments({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId, workspaceId]);
 
+  useEffect(() => {
+    onCountChange?.(items.length);
+  }, [items.length, onCountChange]);
+
   async function submitComment(input: {
     body: string;
     fileIds: string[];
+    mentions: CommentMention[];
   }): Promise<boolean> {
     const result = await createCommentAction({
       workspaceId,
@@ -112,6 +130,7 @@ export function TaskComments({
       targetId: taskId,
       body: input.body,
       fileIds: input.fileIds,
+      mentions: input.mentions,
     });
     if (!result.success) {
       toast.error(result.error.message);
@@ -168,34 +187,40 @@ export function TaskComments({
     });
   }
 
-  return (
-    <div className="space-y-3">
-      <button
-        type="button"
-        className="flex w-full items-center gap-1.5 text-left text-[15px] font-semibold tracking-tight text-foreground hover:text-foreground"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span>Comments</span>
-        <span className="text-caption font-medium tabular-nums text-muted-foreground">
-          {items.length}
-        </span>
-        <ChevronDown
-          className={cn(
-            "size-3.5 transition-transform",
-            open && "rotate-180"
-          )}
-        />
-      </button>
+  const showBody = hideHeader || open;
 
-      {open ? (
-        <>
+  return (
+    <div className="space-y-4">
+      {!hideHeader ? (
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 text-left text-sm font-semibold tracking-tight text-foreground"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          <span>Comments</span>
+          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+            {items.length}
+          </span>
+          <ChevronDown
+            className={cn(
+              "size-3.5 text-muted-foreground transition-transform",
+              open && "rotate-180"
+            )}
+          />
+        </button>
+      ) : null}
+
+      {showBody ? (
+        <div className="space-y-4">
           {loading ? (
-            <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Spinner className="size-3" /> Loading…
             </p>
           ) : items.length === 0 ? (
-            <p className="text-caption text-muted-foreground">No comments yet</p>
+            <p className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground">
+              No comments yet. Start the conversation below.
+            </p>
           ) : (
             <ul className="space-y-4">
               {items.map((c) => {
@@ -204,7 +229,7 @@ export function TaskComments({
                 const bodyText = c.body?.trim() === "" ? "" : c.body;
                 return (
                   <li key={c.id} className="group/comment flex gap-2.5">
-                    <Avatar size="sm" className="mt-0.5 size-6 shrink-0">
+                    <Avatar size="sm" className="mt-0.5 size-7 shrink-0">
                       <AvatarFallback className="text-[9px] font-medium">
                         {initials(c.authorName || "?")}
                       </AvatarFallback>
@@ -277,9 +302,12 @@ export function TaskComments({
                           </div>
                         </div>
                       ) : bodyText ? (
-                        <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/90">
-                          {bodyText}
-                        </p>
+                        <MentionText
+                          body={bodyText}
+                          mentions={c.mentions ?? []}
+                          workspaceSlug={workspaceSlug}
+                          className="mt-1 text-[13px] leading-relaxed text-foreground/90"
+                        />
                       ) : null}
 
                       {(c.attachments ?? []).map((a) => {
@@ -316,14 +344,17 @@ export function TaskComments({
           )}
 
           {canComment ? (
-            <CommentComposer
-              workspaceId={workspaceId}
-              disabled={!canComment}
-              pending={pending}
-              onSubmit={submitComment}
-            />
+            <div className="sticky bottom-0 border-t border-border/40 bg-background pt-3">
+              <CommentComposer
+                workspaceId={workspaceId}
+                disabled={!canComment}
+                pending={pending}
+                members={members}
+                onSubmit={submitComment}
+              />
+            </div>
           ) : null}
-        </>
+        </div>
       ) : null}
     </div>
   );

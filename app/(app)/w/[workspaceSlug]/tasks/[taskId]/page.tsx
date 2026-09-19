@@ -53,7 +53,7 @@ export default async function TaskDetailPage({
             : `Updated ${formatDateLocal(task.updatedAt)}`
         }
       />
-      <div className="mx-auto w-full max-w-4xl">
+      <div className="mx-auto w-full max-w-5xl xl:max-w-6xl pb-16">
         <TaskDetail
           workspaceId={workspace.id}
           workspaceSlug={workspaceSlug}
@@ -69,6 +69,7 @@ export default async function TaskDetailPage({
           canCreate={roleHasPermission(membership.role, "tasks.create")}
           canInvite={roleHasPermission(membership.role, "members.invite")}
           subtasks={subtasks}
+          variant="page"
           currentUserId={user.id}
         />
       </div>

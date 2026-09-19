@@ -2,23 +2,20 @@
 
 import { Suspense, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
   BarChart3,
-  CalendarClock,
   CalendarDays,
-  CheckCircle2,
   CheckSquare,
   ChevronsUpDown,
-  FileText,
+  Database,
+  FilePlus,
   FolderKanban,
-  Inbox,
-  LayoutDashboard,
+  Home,
   Plus,
   Search,
   Settings,
-  Sun,
   Trash2,
 } from "lucide-react";
 import { logoutAction } from "@/modules/auth/auth.actions";
@@ -29,6 +26,7 @@ import { PageTree } from "@/components/pages/page-tree";
 import { CommandMenu } from "@/components/layout/command-menu";
 import { KeyboardShortcuts } from "@/components/layout/keyboard-shortcuts";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
+import { AppBreadcrumbs, BreadcrumbProvider } from "@/components/layout/breadcrumbs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,25 +78,28 @@ function NavLink({
   label,
   icon: Icon,
   active,
+  badge,
 }: {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   active: boolean;
+  badge?: React.ReactNode;
 }) {
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={active}
-        className={
-          active
-            ? "bg-primary-soft font-medium text-primary data-active:bg-primary-soft data-active:text-primary [&_svg]:text-primary"
-            : undefined
-        }
+        className={cn(
+          "h-8 text-[13px] font-normal text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
+          active &&
+            "bg-sidebar-accent font-medium text-sidebar-foreground data-active:bg-sidebar-accent data-active:text-sidebar-foreground [&_svg]:text-foreground"
+        )}
         render={<Link href={href} />}
       >
-        <Icon />
-        <span>{label}</span>
+        <Icon className="size-4 shrink-0 text-muted-foreground/80" />
+        <span className="truncate">{label}</span>
+        {badge ? <span className="ml-auto text-xs">{badge}</span> : null}
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -116,7 +117,9 @@ export function AppShell(props: {
 }) {
   return (
     <Suspense fallback={null}>
-      <AppShellInner {...props} />
+      <BreadcrumbProvider>
+        <AppShellInner {...props} />
+      </BreadcrumbProvider>
     </Suspense>
   );
 }
@@ -127,7 +130,6 @@ function AppShellInner({
   currentSlug,
   workspaceId,
   pages,
-  recentPages = [],
   projects = [],
   children,
 }: {
@@ -141,82 +143,13 @@ function AppShellInner({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const [commandOpen, setCommandOpen] = useState(false);
   const [workspaceQuery, setWorkspaceQuery] = useState("");
-  const [, startTransition] = useTransition();
+  const [isCreatingPage, startTransition] = useTransition();
   const base = `/w/${currentSlug}`;
   const currentWorkspace =
     workspaces.find((ws) => ws.slug === currentSlug) ?? workspaces[0];
-  const taskPreset = searchParams.get("preset");
-  const onTasks = pathname.startsWith(`${base}/tasks`);
-  const onTaskDetail = /^\/w\/[^/]+\/tasks\/[^/]+/.test(pathname);
-
-  const primaryNav = [
-    { href: base, label: "Home", icon: LayoutDashboard, key: "home" as const },
-    {
-      href: `${base}/tasks?preset=assigned`,
-      label: "Inbox",
-      icon: Inbox,
-      key: "inbox" as const,
-    },
-    {
-      href: `${base}/tasks?preset=today`,
-      label: "Today",
-      icon: Sun,
-      key: "today" as const,
-    },
-    {
-      href: `${base}/tasks?preset=upcoming`,
-      label: "Upcoming",
-      icon: CalendarClock,
-      key: "upcoming" as const,
-    },
-    {
-      href: `${base}/calendar`,
-      label: "Calendar",
-      icon: CalendarDays,
-      key: "calendar" as const,
-    },
-    {
-      href: `${base}/tasks`,
-      label: "My Tasks",
-      icon: CheckSquare,
-      key: "my-tasks" as const,
-    },
-    {
-      href: `${base}/projects`,
-      label: "Projects",
-      icon: FolderKanban,
-      key: "projects" as const,
-    },
-    {
-      href: `${base}/tasks?preset=completed`,
-      label: "Completed",
-      icon: CheckCircle2,
-      key: "completed" as const,
-    },
-  ];
-
-  const secondaryNav = [
-    { href: `${base}/analytics`, label: "Analytics", icon: BarChart3 },
-    { href: `${base}/pages`, label: "Pages", icon: FileText },
-    { href: `${base}/trash`, label: "Trash", icon: Trash2 },
-  ];
-
-  const currentLabel = useMemo(() => {
-    if (pathname.startsWith(`${base}/calendar`)) return "Calendar";
-    if (pathname.startsWith(`${base}/projects`)) return "Projects";
-    if (pathname.startsWith(`${base}/pages`)) return "Pages";
-    if (pathname.startsWith(`${base}/analytics`)) return "Analytics";
-    if (pathname.startsWith(`${base}/focus`)) return "Focus";
-    if (pathname.startsWith(`${base}/settings`)) return "Settings";
-    if (pathname.startsWith(`${base}/notifications`)) return "Notifications";
-    if (pathname.startsWith(`${base}/tasks`)) return "Tasks";
-    if (pathname === base) return "Home";
-    return "Workspace";
-  }, [base, pathname]);
 
   const initials = user.name
     .split(" ")
@@ -231,28 +164,50 @@ function AppShellInner({
     return workspaces.filter((ws) => ws.name.toLowerCase().includes(q));
   }, [workspaces, workspaceQuery]);
 
-  function isPrimaryActive(key: (typeof primaryNav)[number]["key"]) {
-    switch (key) {
-      case "home":
-        return pathname === base;
-      case "inbox":
-        return onTasks && !onTaskDetail && taskPreset === "assigned";
-      case "today":
-        return onTasks && !onTaskDetail && taskPreset === "today";
-      case "upcoming":
-        return onTasks && !onTaskDetail && taskPreset === "upcoming";
-      case "completed":
-        return onTasks && !onTaskDetail && taskPreset === "completed";
-      case "my-tasks":
-        return onTasks && !onTaskDetail && !taskPreset;
-      case "calendar":
-        return pathname.startsWith(`${base}/calendar`);
-      case "projects":
-        return pathname.startsWith(`${base}/projects`);
-      default:
-        return false;
-    }
-  }
+  const hasFavorites = useMemo(() => {
+    const checkFav = (nodes: PageTreeNode[]): boolean =>
+      nodes.some((n) => n.isFavorite || (n.children && checkFav(n.children)));
+    return checkFav(pages);
+  }, [pages]);
+
+  const viewNav = [
+    {
+      href: base,
+      label: "Home",
+      icon: Home,
+      active: pathname === base,
+    },
+    {
+      href: `${base}/tasks`,
+      label: "Tasks",
+      icon: CheckSquare,
+      active: pathname.startsWith(`${base}/tasks`),
+    },
+    {
+      href: `${base}/projects`,
+      label: "Projects",
+      icon: FolderKanban,
+      active: pathname.startsWith(`${base}/projects`),
+    },
+    {
+      href: `${base}/calendar`,
+      label: "Calendar",
+      icon: CalendarDays,
+      active: pathname.startsWith(`${base}/calendar`),
+    },
+    {
+      href: `${base}/databases`,
+      label: "Databases",
+      icon: Database,
+      active: pathname.startsWith(`${base}/databases`),
+    },
+    {
+      href: `${base}/analytics`,
+      label: "Analytics",
+      icon: BarChart3,
+      active: pathname.startsWith(`${base}/analytics`),
+    },
+  ];
 
   return (
     <SidebarProvider>
@@ -266,49 +221,45 @@ function AppShellInner({
       <KeyboardShortcuts
         workspaceSlug={currentSlug}
         onOpenCommand={() => setCommandOpen(true)}
-        onCreateTask={() =>
-          router.push(`${base}/tasks?new=1`)
-        }
+        onCreateTask={() => router.push(`${base}/tasks?new=1`)}
       />
-      <Sidebar variant="inset" collapsible="icon">
-        <SidebarHeader className="gap-1.5 px-2.5 py-2">
-          <Link
-            href={base}
-            className="truncate px-1 text-body font-semibold tracking-tight text-sidebar-foreground"
-          >
-            Zuvigo
-          </Link>
 
+      <Sidebar variant="inset" collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
+        {/* Workspace Switcher Header */}
+        <SidebarHeader className="gap-1 p-2">
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="w-full justify-between font-normal"
+                  className="h-9 w-full justify-between px-2 font-normal hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:p-1.5"
                 />
               }
             >
               <span className="flex min-w-0 items-center gap-2">
-                <Avatar className="size-5">
-                  <AvatarFallback className="bg-primary-soft text-[10px] text-primary">
+                <Avatar className="size-5 rounded">
+                  <AvatarFallback className="rounded bg-primary-soft text-[10px] font-semibold text-primary">
                     {(currentWorkspace?.name ?? "W").slice(0, 1).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <span className="truncate group-data-[collapsible=icon]:hidden">
+                <span className="truncate text-sm font-medium group-data-[collapsible=icon]:hidden">
                   {currentWorkspace?.name ?? "Workspace"}
                 </span>
               </span>
-              <ChevronsUpDown className="size-3.5 opacity-60 group-data-[collapsible=icon]:hidden" />
+              <ChevronsUpDown className="size-3.5 opacity-50 group-data-[collapsible=icon]:hidden" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-64 p-1">
+              <div className="px-2 py-1.5 text-caption font-semibold text-muted-foreground">
+                Workspaces
+              </div>
               {workspaces.length > 5 ? (
                 <div className="px-1 pb-1">
                   <Input
                     value={workspaceQuery}
                     onChange={(e) => setWorkspaceQuery(e.target.value)}
                     placeholder="Search workspaces…"
-                    className="h-8"
+                    className="h-8 text-xs"
                   />
                 </div>
               ) : null}
@@ -316,178 +267,194 @@ function AppShellInner({
                 <DropdownMenuItem
                   key={ws.id}
                   render={<Link href={`/w/${ws.slug}`} />}
+                  className="text-xs"
                 >
-                  {ws.name}
-                  {ws.slug === currentSlug ? " · current" : ""}
+                  <span className="truncate">{ws.name}</span>
+                  {ws.slug === currentSlug ? (
+                    <span className="ml-auto text-[10px] text-muted-foreground">current</span>
+                  ) : null}
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuItem render={<Link href="/w/new" />}>
+              <DropdownMenuItem render={<Link href="/w/new" />} className="text-xs">
+                <Plus className="mr-2 size-3.5" />
                 New workspace
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                render={<Link href={`${base}/settings`} />}
+                className="text-xs"
+              >
+                <Settings className="mr-2 size-3.5" />
+                Settings & members
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button
-            type="button"
-            size="sm"
-            className="w-full justify-start gap-1.5"
-            onClick={() => router.push(`${base}/tasks?new=1`)}
-          >
-            <Plus className="size-3.5" />
-            <span className="group-data-[collapsible=icon]:hidden">
-              Create task
-            </span>
-          </Button>
+          {/* Top Quick Actions (Search, Updates, Settings, New Page) */}
+          <SidebarMenu className="mt-1 space-y-0.5">
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => setCommandOpen(true)}
+                className="h-8 text-[13px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                tooltip="Search (⌘K)"
+              >
+                <Search className="size-4 shrink-0 text-muted-foreground/80" />
+                <span className="truncate">Search</span>
+                <kbd className="ml-auto hidden rounded border border-sidebar-border bg-sidebar px-1 text-[10px] text-muted-foreground group-data-[collapsible=icon]:hidden lg:inline">
+                  ⌘K
+                </kbd>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith(`${base}/notifications`)}
+                render={<Link href={`${base}/notifications`} />}
+                className="h-8 text-[13px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                tooltip="Updates & Inbox"
+              >
+                <Bell className="size-4 shrink-0 text-muted-foreground/80" />
+                <span className="truncate">Updates</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith(`${base}/settings`)}
+                render={<Link href={`${base}/settings`} />}
+                className="h-8 text-[13px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                tooltip="Settings"
+              >
+                <Settings className="size-4 shrink-0 text-muted-foreground/80" />
+                <span className="truncate">Settings</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                disabled={isCreatingPage}
+                onClick={() => {
+                  startTransition(() => {
+                    void createPageAction({
+                      workspaceId,
+                      workspaceSlug: currentSlug,
+                    });
+                  });
+                }}
+                className="h-8 text-[13px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                tooltip="New page"
+              >
+                <FilePlus className="size-4 shrink-0 text-muted-foreground/80" />
+                <span className="truncate">New page</span>
+                <Plus className="ml-auto size-3 text-muted-foreground/60 group-data-[collapsible=icon]:hidden" />
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarHeader>
 
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-caption">
-              Tasks
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {primaryNav.map((item) => (
-                  <NavLink
-                    key={item.key}
-                    href={item.href}
-                    label={item.label}
-                    icon={item.icon}
-                    active={isPrimaryActive(item.key)}
-                  />
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+        <SidebarContent className="px-1.5 py-1">
+          {/* Favorites Group (Only shown when user has favorited items) */}
+          {hasFavorites ? (
+            <SidebarGroup className="py-1">
+              <SidebarGroupLabel className="h-6 px-2 text-[11px] font-semibold tracking-wider text-muted-foreground/70 uppercase">
+                Favorites
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <PageTree
+                  key={`fav-${workspaceId}`}
+                  workspaceId={workspaceId}
+                  workspaceSlug={currentSlug}
+                  pages={pages}
+                  favoritesOnly
+                />
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ) : null}
 
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-caption">
-              Projects
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {projects.slice(0, 8).map((project) => (
-                  <SidebarMenuItem key={project.id}>
-                    <SidebarMenuButton
-                      isActive={pathname.includes(
-                        `/projects/${project.id}`
-                      )}
-                      render={
-                        <Link href={`${base}/projects/${project.id}`} />
-                      }
-                    >
-                      <span
-                        className="size-2.5 shrink-0 rounded-full bg-primary/50"
-                        aria-hidden
-                      />
-                      <span className="truncate">{project.name}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    render={<Link href={`${base}/projects?new=1`} />}
-                  >
-                    <Plus />
-                    <span>Create project</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-caption">
-              Favorites
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
+          {/* Notion's Core: Workspace Pages Tree (Hierarchical) */}
+          <SidebarGroup className="py-1">
+            <div className="flex h-6 items-center justify-between px-2">
+              <span className="text-[11px] font-semibold tracking-wider text-muted-foreground/70 uppercase">
+                Pages
+              </span>
+              <button
+                type="button"
+                aria-label="Add a new page"
+                title="Add a page"
+                disabled={isCreatingPage}
+                onClick={() => {
+                  startTransition(() => {
+                    void createPageAction({
+                      workspaceId,
+                      workspaceSlug: currentSlug,
+                    });
+                  });
+                }}
+                className="flex size-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              >
+                <Plus className="size-3.5" />
+              </button>
+            </div>
+            <SidebarGroupContent className="mt-0.5">
               <PageTree
-                key={`fav-${workspaceId}`}
+                key={`tree-${workspaceId}`}
                 workspaceId={workspaceId}
                 workspaceSlug={currentSlug}
                 pages={pages}
-                favoritesOnly
+                favoritesOnly={false}
               />
             </SidebarGroupContent>
           </SidebarGroup>
 
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-caption">More</SidebarGroupLabel>
+          {/* Views & Apps Group (Tasks, Projects, Calendar, Databases, Analytics) */}
+          <SidebarGroup className="py-1">
+            <SidebarGroupLabel className="h-6 px-2 text-[11px] font-semibold tracking-wider text-muted-foreground/70 uppercase">
+              Views & Tools
+            </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
-                {secondaryNav.map((item) => (
+              <SidebarMenu className="space-y-0.5">
+                {viewNav.map((item) => (
                   <NavLink
                     key={item.href}
                     href={item.href}
                     label={item.label}
                     icon={item.icon}
-                    active={pathname.startsWith(item.href)}
+                    active={item.active}
                   />
                 ))}
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => {
-                      startTransition(() => {
-                        void createPageAction({
-                          workspaceId,
-                          workspaceSlug: currentSlug,
-                        });
-                      });
-                    }}
-                  >
-                    <Plus />
-                    <span>New page</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter className="gap-1 p-2.5">
-          <Separator />
+        {/* Sidebar Footer: Trash & User Profile */}
+        <SidebarFooter className="gap-1 p-2 border-t border-sidebar-border/60">
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => setCommandOpen(true)}
-                tooltip="Search · ⌘K"
+                isActive={pathname.startsWith(`${base}/trash`)}
+                render={<Link href={`${base}/trash`} />}
+                className="h-8 text-[13px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                tooltip="Trash"
               >
-                <Search />
-                <span>Search</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                isActive={pathname.startsWith(`${base}/notifications`)}
-                render={<Link href={`${base}/notifications`} />}
-              >
-                <Bell />
-                <span>Notifications</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                isActive={pathname.startsWith(`${base}/settings`)}
-                render={<Link href={`${base}/settings`} />}
-              >
-                <Settings />
-                <span>Settings</span>
+                <Trash2 className="size-4 shrink-0 text-muted-foreground/80" />
+                <span className="truncate">Trash</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
-          <div className="flex items-center gap-2 rounded-md px-1 py-0.5 group-data-[collapsible=icon]:justify-center">
-            <Avatar className="size-7">
-              <AvatarFallback className="bg-primary-soft text-[10px] text-primary">
+
+          <div className="flex items-center gap-2 rounded-md p-1.5 transition-colors hover:bg-sidebar-accent group-data-[collapsible=icon]:justify-center">
+            <Avatar className="size-6 shrink-0 rounded">
+              <AvatarFallback className="rounded bg-primary-soft text-[10px] font-medium text-primary">
                 {initials}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-caption font-medium">{user.name}</p>
+              <p className="truncate text-xs font-medium text-foreground">{user.name}</p>
               <form action={logoutAction}>
                 <button
                   type="submit"
-                  className="text-[11px] text-muted-foreground hover:text-foreground"
+                  className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Sign out
                 </button>
@@ -497,67 +464,74 @@ function AppShellInner({
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarInset>
-        <header className="sticky top-0 z-(--z-header) flex h-(--header-h) items-center gap-3 border-b bg-background/95 px-gutter backdrop-blur">
-          <SidebarTrigger />
-          <div className="min-w-0 hidden sm:block">
-            <p className="truncate text-label font-medium text-foreground">
-              {currentLabel}
-            </p>
+      <SidebarInset className="bg-background">
+        {/* Top Notion-style Bar with Breadcrumbs & Actions */}
+        <header className="sticky top-0 z-(--z-header) flex h-(--header-h) items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 backdrop-blur">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
+            <Separator orientation="vertical" className="h-4 opacity-50" />
+            <AppBreadcrumbs workspaceName={currentWorkspace?.name ?? "Workspace"} />
           </div>
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="hidden max-w-xs flex-1 justify-start gap-2 text-muted-foreground sm:inline-flex"
-              onClick={() => setCommandOpen(true)}
-            >
-              <Search className="size-3.5" />
-              <span className="truncate">Search…</span>
-              <kbd className="ml-auto rounded border border-border px-1 text-[10px]">
-                ⌘K
-              </kbd>
-            </Button>
+
+          <div className="flex shrink-0 items-center gap-1.5">
             <Button
               type="button"
               variant="ghost"
-              size="icon-sm"
-              className="sm:hidden"
-              aria-label="Search"
+              size="sm"
+              className="hidden h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground sm:inline-flex"
               onClick={() => setCommandOpen(true)}
             >
-              <Search className="size-4" />
+              <Search className="size-3.5" />
+              <span>Search</span>
+              <kbd className="ml-1 rounded border border-border bg-muted/40 px-1 text-[10px]">
+                ⌘K
+              </kbd>
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+              disabled={isCreatingPage}
+              onClick={() => {
+                startTransition(() => {
+                  void createPageAction({
+                    workspaceId,
+                    workspaceSlug: currentSlug,
+                  });
+                });
+              }}
+            >
+              <Plus className="size-3.5" />
+              <span>Page</span>
+            </Button>
+
+            <Button
+              type="button"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs font-medium"
+              onClick={() => router.push(`${base}/tasks?new=1`)}
+            >
+              <Plus className="size-3.5" />
+              <span>Task</span>
+            </Button>
+
+            <ThemeToggle />
+
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-7 text-muted-foreground hover:text-foreground"
+              aria-label="Notifications"
+              render={<Link href={`${base}/notifications`} />}
+            >
+              <Bell className="size-3.5" />
             </Button>
           </div>
-          <Button
-            type="button"
-            size="sm"
-            className="hidden h-8 gap-1 sm:inline-flex"
-            onClick={() => router.push(`${base}/tasks?new=1`)}
-          >
-            <Plus className="size-3.5" />
-            Task
-            <kbd className="ml-1 hidden rounded border border-primary-foreground/30 px-1 text-[10px] opacity-80 lg:inline">
-              C
-            </kbd>
-          </Button>
-          <ThemeToggle />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Notifications"
-            render={<Link href={`${base}/notifications`} />}
-          >
-            <Bell className="size-4" />
-          </Button>
         </header>
-        <div
-          className={cn(
-            "flex-1 bg-surface/50 px-4 py-3",
-            "pb-20 md:pb-3"
-          )}
-        >
+
+        <div className={cn("flex-1 px-4 py-4 md:px-8 pb-20 md:pb-6")}>
           {children}
         </div>
         <Suspense fallback={null}>

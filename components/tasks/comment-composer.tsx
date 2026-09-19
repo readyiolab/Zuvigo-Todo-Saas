@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Paperclip, Send, Smile } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { AtSign, Paperclip, Send, Smile } from "lucide-react";
 import {
   confirmUploadAction,
   markFailedUploadAction,
@@ -14,11 +14,23 @@ import {
   VoiceRecorder,
   type VoiceRecording,
 } from "@/components/tasks/voice-recorder";
+import { MentionSuggestionList } from "@/components/mentions/mention-popover";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  insertMentionToken,
+  mentionQueryRange,
+  type CommentMention,
+  type MentionPerson,
+} from "@/lib/mention-helpers";
 
 export type DraftAttachment = {
   localId: string;
@@ -40,15 +52,27 @@ export function CommentComposer({
   workspaceId,
   disabled,
   pending,
+  members = [],
   onSubmit,
 }: {
   workspaceId: string;
   disabled?: boolean;
   pending?: boolean;
-  onSubmit: (input: { body: string; fileIds: string[] }) => Promise<boolean>;
+  members?: MentionPerson[];
+  onSubmit: (input: {
+    body: string;
+    fileIds: string[];
+    mentions: CommentMention[];
+  }) => Promise<boolean>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [body, setBody] = useState("");
+  const [mentions, setMentions] = useState<CommentMention[]>([]);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionReplaceFrom, setMentionReplaceFrom] = useState<number | null>(
+    null
+  );
   const [drafts, setDrafts] = useState<DraftAttachment[]>([]);
   const [voice, setVoice] = useState<VoiceRecording | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -104,23 +128,11 @@ export function CommentComposer({
     try {
       const put = await fetch(data.uploadUrl, {
         method: "PUT",
-        headers: { "Content-Type": contentType },
         body: file,
+        headers: { "Content-Type": contentType },
       });
-      if (!put.ok) throw new Error("PUT failed");
-      setDrafts((prev) =>
-        prev.map((d) =>
-          d.localId === localId ? { ...d, progress: 80 } : d
-        )
-      );
-      const confirmed = await confirmUploadAction({
-        workspaceId,
-        fileId: data.fileId,
-      });
-      if (!confirmed.success) {
-        await markFailedUploadAction({ workspaceId, fileId: data.fileId });
-        throw new Error(confirmed.error.message);
-      }
+      if (!put.ok) throw new Error("upload failed");
+      await confirmUploadAction({ workspaceId, fileId: data.fileId });
       setDrafts((prev) =>
         prev.map((d) =>
           d.localId === localId
@@ -130,46 +142,49 @@ export function CommentComposer({
       );
       return data.fileId;
     } catch {
-      await markFailedUploadAction({ workspaceId, fileId: data.fileId });
+      await markFailedUploadAction({ workspaceId, fileId: data.fileId }).catch(
+        () => undefined
+      );
       setDrafts((prev) =>
         prev.map((d) =>
           d.localId === localId ? { ...d, status: "error" } : d
         )
       );
-      toast.error(`Failed to upload ${file.name}`);
+      toast.error("Upload failed");
       return null;
     }
   }
 
-  function addFiles(list: FileList | null) {
-    if (!list?.length) return;
-    const next: DraftAttachment[] = Array.from(list).map((file) => ({
-      localId: `${Date.now()}-${file.name}-${Math.random()}`,
-      file,
-      filename: file.name,
-      contentType: file.type || "application/octet-stream",
-      sizeBytes: file.size,
-      localUrl: URL.createObjectURL(file),
-      progress: 0,
-      status: "uploading" as const,
-    }));
-    setDrafts((prev) => [...prev, ...next]);
+  function addFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
     setExpanded(true);
-    void (async () => {
-      for (const draft of next) {
-        await uploadFile(draft.file, draft.localId);
-      }
-    })();
+    Array.from(fileList).forEach((file) => {
+      const localId = crypto.randomUUID();
+      const localUrl = URL.createObjectURL(file);
+      setDrafts((prev) => [
+        ...prev,
+        {
+          localId,
+          file,
+          filename: file.name,
+          contentType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+          localUrl,
+          progress: 0,
+          status: "uploading",
+        },
+      ]);
+      void uploadFile(file, localId);
+    });
   }
 
   async function uploadVoice(): Promise<string | null> {
     if (!voice) return null;
-    const file = new File(
-      [voice.blob],
-      voice.filename || `voice.${extensionForVoice(voice.contentType)}`,
-      { type: voice.contentType }
-    );
-    const localId = `voice-${Date.now()}`;
+    const ext = extensionForVoice(voice.blob.type);
+    const file = new File([voice.blob], `voice.${ext}`, {
+      type: voice.blob.type || "audio/webm",
+    });
+    const localId = crypto.randomUUID();
     setDrafts((prev) => [
       ...prev,
       {
@@ -203,7 +218,7 @@ export function CommentComposer({
 
     setUploading(true);
     try {
-      let fileIds = [...readyIds];
+      const fileIds = [...readyIds];
       if (voice) {
         const voiceId = await uploadVoice();
         if (voiceId) fileIds.push(voiceId);
@@ -217,14 +232,23 @@ export function CommentComposer({
         setUploading(false);
         return;
       }
-      const ok = await onSubmit({ body: text, fileIds });
+      const usedMentions = mentions.filter((m) =>
+        text.includes(`@${m.label}`)
+      );
+      const ok = await onSubmit({
+        body: text,
+        fileIds,
+        mentions: usedMentions,
+      });
       if (ok) {
         drafts.forEach((d) => URL.revokeObjectURL(d.localUrl));
         if (voice) URL.revokeObjectURL(voice.url);
         setBody("");
+        setMentions([]);
         setDrafts([]);
         setVoice(null);
         setExpanded(false);
+        setMentionOpen(false);
       }
     } finally {
       setUploading(false);
@@ -246,6 +270,61 @@ export function CommentComposer({
       const pos = start + emoji.length;
       el.setSelectionRange(pos, pos);
     });
+  }
+
+  const applyMention = useCallback(
+    (mention: CommentMention) => {
+      const el = textareaRef.current;
+      const caret = el?.selectionStart ?? body.length;
+      const range = mentionQueryRange(body, caret);
+      const replaceFrom = range?.start ?? mentionReplaceFrom ?? caret;
+      const inserted = insertMentionToken(body, caret, mention.label, replaceFrom);
+      setBody(inserted.body);
+      setMentions((prev) => {
+        if (prev.some((m) => m.type === mention.type && m.id === mention.id)) {
+          return prev;
+        }
+        return [...prev, mention];
+      });
+      setMentionOpen(false);
+      setMentionQuery("");
+      setMentionReplaceFrom(null);
+      requestAnimationFrame(() => {
+        el?.focus();
+        el?.setSelectionRange(inserted.caret, inserted.caret);
+      });
+    },
+    [body, mentionReplaceFrom]
+  );
+
+  function openMentionMode() {
+    setExpanded(true);
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? body.length;
+    const before = body.slice(0, caret);
+    const after = body.slice(caret);
+    const needsAt = !before.endsWith("@");
+    const nextBody = needsAt ? `${before}@${after}` : body;
+    const nextCaret = needsAt ? caret + 1 : caret;
+    setBody(nextBody);
+    setMentionReplaceFrom(needsAt ? caret : before.lastIndexOf("@"));
+    setMentionQuery("");
+    setMentionOpen(true);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(nextCaret, nextCaret);
+    });
+  }
+
+  function syncMentionFromCaret(nextBody: string, caret: number) {
+    const range = mentionQueryRange(nextBody, caret);
+    if (!range) {
+      if (mentionOpen) setMentionOpen(false);
+      return;
+    }
+    setMentionReplaceFrom(range.start);
+    setMentionQuery(range.query);
+    if (!mentionOpen) setMentionOpen(true);
   }
 
   const busy = pending || uploading;
@@ -276,8 +355,15 @@ export function CommentComposer({
         rows={expanded ? 3 : 1}
         placeholder="Comment"
         onFocus={() => setExpanded(true)}
-        onChange={(e) => setBody(e.target.value)}
+        onChange={(e) => {
+          const next = e.target.value;
+          setBody(next);
+          syncMentionFromCaret(next, e.target.selectionStart ?? next.length);
+        }}
         onKeyDown={(e) => {
+          if (mentionOpen && ["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) {
+            return;
+          }
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             void submit();
@@ -321,7 +407,16 @@ export function CommentComposer({
       )}
 
       {expanded ? (
-        <div className="flex items-center gap-0.5 border-t border-border/40 px-1.5 py-1.5">
+        <div className="relative flex items-center gap-0.5 border-t border-border/40 px-1.5 py-1.5">
+          <MentionSuggestionList
+            open={mentionOpen}
+            onClose={() => setMentionOpen(false)}
+            query={mentionQuery}
+            people={members}
+            workspaceId={workspaceId}
+            onSelect={applyMention}
+            className="left-1.5"
+          />
           <Button
             type="button"
             size="icon-sm"
@@ -333,6 +428,25 @@ export function CommentComposer({
           >
             <Paperclip className="size-4" />
           </Button>
+
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  className="size-8 text-muted-foreground"
+                  disabled={disabled || busy}
+                  aria-label="Mention a person, page, or date"
+                  onClick={openMentionMode}
+                />
+              }
+            >
+              <AtSign className="size-4" />
+            </TooltipTrigger>
+            <TooltipContent>Mention a person, page, or date</TooltipContent>
+          </Tooltip>
 
           {!voice ? (
             <VoiceRecorder

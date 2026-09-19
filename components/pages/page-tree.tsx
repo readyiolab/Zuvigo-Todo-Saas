@@ -25,6 +25,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  ChevronRight,
   Copy,
   FileText,
   GripVertical,
@@ -43,9 +44,7 @@ import {
   updatePageTitleAction,
 } from "@/modules/pages/page.actions";
 import { sortOrderBetween } from "@/modules/editor/editor.types";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -199,31 +198,16 @@ export function PageTree({
 
   if (flat.length === 0 && !favoritesOnly) {
     return (
-      <div className="space-y-2 px-2">
-        <p className="text-caption text-muted-foreground">No pages yet</p>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="w-full justify-start"
-          disabled={pending}
-          onClick={() => void onCreate(null)}
-        >
-          {pending ? (
-            <Spinner className="size-3.5" />
-          ) : (
-            <Plus className="size-3.5" />
-          )}
-          New page
-        </Button>
+      <div className="px-2 py-1 text-[11px] text-muted-foreground/60">
+        No pages inside
       </div>
     );
   }
 
   if (flat.length === 0 && favoritesOnly) {
     return (
-      <p className="px-2 text-caption text-muted-foreground">
-        Pages you favorite will appear here
+      <p className="px-2 text-[11px] text-muted-foreground/60">
+        Starred pages appear here
       </p>
     );
   }
@@ -231,6 +215,8 @@ export function PageTree({
   const rows = flat.map((page) => {
     const href = `/w/${workspaceSlug}/pages/${page.id}`;
     const active = pathname === href;
+    const isCollapsed = Boolean(collapsed[page.id]);
+    const hasChildren = Boolean(page.children && page.children.length > 0);
 
     const menuActions = {
       onRename: () => setRenamingId(page.id),
@@ -286,6 +272,8 @@ export function PageTree({
           active={active}
           showDragHandle={false}
           showAddChild={false}
+          hasChildren={false}
+          isCollapsed={false}
           renaming={renamingId === page.id}
           onRenameDone={(title) => {
             setRenamingId(null);
@@ -302,7 +290,7 @@ export function PageTree({
           }}
           actions={menuActions}
           style={{
-            paddingLeft: `calc(0.5rem + ${page.depth} * var(--tree-indent))`,
+            paddingLeft: `calc(0.375rem + ${page.depth} * var(--tree-indent))`,
           }}
         />
       );
@@ -315,6 +303,8 @@ export function PageTree({
         href={href}
         active={active}
         disabled={pending}
+        hasChildren={hasChildren}
+        isCollapsed={isCollapsed}
         renaming={renamingId === page.id}
         onRenameDone={(title) => {
           setRenamingId(null);
@@ -335,27 +325,7 @@ export function PageTree({
   });
 
   return (
-    <div
-      className={cn("space-y-1", pending && "pointer-events-none opacity-70")}
-    >
-      {!favoritesOnly ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="w-full justify-start px-2"
-          disabled={pending}
-          onClick={() => void onCreate(null)}
-        >
-          {pending ? (
-            <Spinner className="size-3.5" />
-          ) : (
-            <Plus className="size-3.5" />
-          )}
-          New page
-        </Button>
-      ) : null}
-
+    <div className={cn("space-y-0.5", pending && "pointer-events-none opacity-70")}>
       {favoritesOnly ? (
         <ul className="space-y-0.5">{rows}</ul>
       ) : (
@@ -392,6 +362,8 @@ function PageRow({
   active,
   showDragHandle,
   showAddChild,
+  hasChildren,
+  isCollapsed,
   onAddChild,
   setNodeRef,
   style,
@@ -406,6 +378,8 @@ function PageRow({
   active: boolean;
   showDragHandle: boolean;
   showAddChild: boolean;
+  hasChildren?: boolean;
+  isCollapsed?: boolean;
   onAddChild?: () => void;
   setNodeRef?: (node: HTMLElement | null) => void;
   style?: CSSProperties;
@@ -421,113 +395,149 @@ function PageRow({
         ref={setNodeRef}
         style={style}
         className={cn(
-          "group flex items-center gap-0.5 rounded-md pr-1 text-body",
-          active && "bg-sidebar-accent font-medium",
-          isDragging && "opacity-60"
+          "group flex h-7 items-center rounded-md px-1 text-[13px] transition-colors",
+          active
+            ? "bg-sidebar-accent font-medium text-sidebar-foreground"
+            : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",
+          isDragging && "opacity-50"
         )}
       >
-        <ContextMenuTrigger className="flex min-w-0 flex-1 items-center gap-0.5">
-        {showDragHandle ? (
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            className="cursor-grab touch-none opacity-0 group-hover:opacity-100"
-            aria-label="Drag page"
-            {...dragHandleProps}
-          >
-            <GripVertical className="size-3.5" />
-          </Button>
-        ) : (
-          <span className="size-7 shrink-0" />
-        )}
-        {renaming ? (
-          <Input
-            autoFocus
-            defaultValue={page.title}
-            className="h-7 flex-1"
-            onBlur={(e) => onRenameDone?.(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                onRenameDone?.((e.target as HTMLInputElement).value);
-              }
-              if (e.key === "Escape") onRenameDone?.(page.title);
-            }}
-          />
-        ) : (
-          <Link
-            href={href}
-            className="flex min-w-0 flex-1 items-center gap-1.5 truncate py-1.5"
-          >
-            {page.isFavorite ? (
-              <Star className="size-3.5 shrink-0 fill-warning text-warning" />
-            ) : (
-              <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-            )}
-            <span className="truncate">
-              {page.icon ? `${page.icon} ` : ""}
-              {page.title}
-            </span>
-          </Link>
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                type="button"
-                size="icon-xs"
-                variant="ghost"
-                className="opacity-0 group-hover:opacity-100"
-                aria-label="Page actions"
+        <ContextMenuTrigger className="flex min-w-0 flex-1 items-center gap-1">
+          {/* Expand / Collapse Chevron */}
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                actions.onToggleCollapse();
+              }}
+              className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:text-sidebar-foreground"
+              aria-label={isCollapsed ? "Expand page" : "Collapse page"}
+            >
+              <ChevronRight
+                className={cn(
+                  "size-3 transition-transform duration-150",
+                  !isCollapsed && "rotate-90"
+                )}
               />
-            }
-          >
-            <MoreHorizontal className="size-3.5" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem onClick={actions.onRename}>Rename</DropdownMenuItem>
-            <DropdownMenuItem onClick={actions.onDuplicate}>
-              <Copy className="size-3.5" />
-              Duplicate
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={actions.onFavorite}>
-              <Star className="size-3.5" />
-              {page.isFavorite ? "Unfavorite" : "Favorite"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={actions.onAddChild}>
-              <Plus className="size-3.5" />
-              Add subpage
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={actions.onDelete}>
-              <Trash2 className="size-3.5" />
-              Move to trash
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {showAddChild && onAddChild ? (
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            className="opacity-0 group-hover:opacity-100"
-            aria-label="Add subpage"
-            onClick={onAddChild}
-          >
-            <Plus className="size-3.5" />
-          </Button>
-        ) : null}
+            </button>
+          ) : (
+            <span className="size-4 shrink-0" />
+          )}
+
+          {/* Drag handle */}
+          {showDragHandle ? (
+            <button
+              type="button"
+              className="hidden size-3.5 shrink-0 cursor-grab items-center justify-center text-muted-foreground/40 hover:text-sidebar-foreground group-hover:flex"
+              aria-label="Drag page"
+              {...dragHandleProps}
+            >
+              <GripVertical className="size-3" />
+            </button>
+          ) : null}
+
+          {/* Title or Inline Rename */}
+          {renaming ? (
+            <Input
+              autoFocus
+              defaultValue={page.title}
+              className="h-6 flex-1 px-1 text-xs"
+              onBlur={(e) => onRenameDone?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  onRenameDone?.((e.target as HTMLInputElement).value);
+                }
+                if (e.key === "Escape") onRenameDone?.(page.title);
+              }}
+            />
+          ) : (
+            <Link
+              href={href}
+              className="flex min-w-0 flex-1 items-center gap-1.5 truncate"
+            >
+              {page.isFavorite ? (
+                <Star className="size-3.5 shrink-0 fill-warning text-warning" />
+              ) : page.icon ? (
+                <span className="shrink-0 text-xs">{page.icon}</span>
+              ) : (
+                <FileText className="size-3.5 shrink-0 text-muted-foreground/70" />
+              )}
+              <span className="truncate">{page.title || "Untitled"}</span>
+            </Link>
+          )}
+
+          {/* Right Hover Actions (More & Add Subpage) */}
+          <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-sidebar-border hover:text-sidebar-foreground"
+                    aria-label="Page actions"
+                  />
+                }
+              >
+                <MoreHorizontal className="size-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44 text-xs">
+                <DropdownMenuItem onClick={actions.onRename}>Rename</DropdownMenuItem>
+                <DropdownMenuItem onClick={actions.onDuplicate}>
+                  <Copy className="mr-2 size-3.5" />
+                  Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={actions.onFavorite}>
+                  <Star className="mr-2 size-3.5" />
+                  {page.isFavorite ? "Unfavorite" : "Favorite"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={actions.onAddChild}>
+                  <Plus className="mr-2 size-3.5" />
+                  Add subpage
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={actions.onDelete}>
+                  <Trash2 className="mr-2 size-3.5" />
+                  Move to trash
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {showAddChild && onAddChild ? (
+              <button
+                type="button"
+                className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-sidebar-border hover:text-sidebar-foreground"
+                aria-label="Add subpage"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onAddChild();
+                }}
+              >
+                <Plus className="size-3" />
+              </button>
+            ) : null}
+          </div>
         </ContextMenuTrigger>
       </li>
-      <ContextMenuContent className="w-44">
+      <ContextMenuContent className="w-44 text-xs">
         <ContextMenuItem onClick={actions.onRename}>Rename</ContextMenuItem>
-        <ContextMenuItem onClick={actions.onDuplicate}>Duplicate</ContextMenuItem>
+        <ContextMenuItem onClick={actions.onDuplicate}>
+          <Copy className="mr-2 size-3.5" />
+          Duplicate
+        </ContextMenuItem>
         <ContextMenuItem onClick={actions.onFavorite}>
+          <Star className="mr-2 size-3.5" />
           {page.isFavorite ? "Unfavorite" : "Favorite"}
         </ContextMenuItem>
-        <ContextMenuItem onClick={actions.onAddChild}>Add subpage</ContextMenuItem>
+        <ContextMenuItem onClick={actions.onAddChild}>
+          <Plus className="mr-2 size-3.5" />
+          Add subpage
+        </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" onClick={actions.onDelete}>
+          <Trash2 className="mr-2 size-3.5" />
           Move to trash
         </ContextMenuItem>
       </ContextMenuContent>
@@ -540,6 +550,8 @@ function SortablePageRow({
   href,
   active,
   disabled,
+  hasChildren,
+  isCollapsed,
   actions,
   renaming,
   onRenameDone,
@@ -548,6 +560,8 @@ function SortablePageRow({
   href: string;
   active: boolean;
   disabled?: boolean;
+  hasChildren?: boolean;
+  isCollapsed?: boolean;
   actions: PageActions;
   renaming?: boolean;
   onRenameDone?: (title: string) => void;
@@ -564,7 +578,7 @@ function SortablePageRow({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    paddingLeft: `calc(0.5rem + ${page.depth} * var(--tree-indent))`,
+    paddingLeft: `calc(0.375rem + ${page.depth} * var(--tree-indent))`,
   };
 
   return (
@@ -574,6 +588,8 @@ function SortablePageRow({
       active={active}
       showDragHandle={!disabled}
       showAddChild={!disabled}
+      hasChildren={hasChildren}
+      isCollapsed={isCollapsed}
       onAddChild={actions.onAddChild}
       setNodeRef={setNodeRef}
       style={style}

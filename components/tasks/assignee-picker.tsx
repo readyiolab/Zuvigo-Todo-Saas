@@ -193,7 +193,7 @@ export function AssigneePicker({
             <button
               type="button"
               className={cn(
-                "max-w-full truncate rounded-sm text-right text-[14px] outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+                "inline-flex h-7 items-center justify-start gap-1.5 rounded-md border border-border/50 bg-muted/30 px-2.5 py-0.5 text-xs font-medium transition-colors hover:border-border hover:bg-muted/60",
                 selected.length === 0
                   ? "text-muted-foreground"
                   : "text-foreground"
@@ -210,7 +210,16 @@ export function AssigneePicker({
         }
       >
         {inlineSummary ? (
-          summary
+          <span className="inline-flex items-center gap-1.5 truncate">
+            {selected.length > 0 ? (
+              <Avatar size="sm" className="size-4 shrink-0">
+                <AvatarFallback className="text-[8px] font-semibold">
+                  {initials(selected[0].name)}
+                </AvatarFallback>
+              </Avatar>
+            ) : null}
+            <span className="truncate">{summary}</span>
+          </span>
         ) : (
           <>
             <Plus className="size-3" />
@@ -218,7 +227,7 @@ export function AssigneePicker({
           </>
         )}
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 p-2">
+      <PopoverContent align="start" className="w-72 p-2">
         <div className="space-y-2">
           <Input
             value={query}
@@ -354,7 +363,7 @@ export function AssigneePicker({
   );
 
   if (inlineSummary) {
-    return <div className="min-w-0 flex-1 text-right">{pickerPopover}</div>;
+    return <div className="min-w-0 flex-1 text-left">{pickerPopover}</div>;
   }
 
   return (

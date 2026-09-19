@@ -155,9 +155,10 @@ export const SLASH_COMMAND_ITEMS: CommandItem[] = [
     category: "Advanced",
     aliases: ["table", "grid", "spreadsheet"],
     command: ({ editor, range }) => {
-      (editor.chain().focus().deleteRange(range) as any)
-        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-        .run();
+      const chain = editor.chain().focus().deleteRange(range) as unknown as {
+        insertTable: (options: { rows: number; cols: number; withHeaderRow: boolean }) => { run: () => boolean };
+      };
+      chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
     },
   },
   {

@@ -14,6 +14,7 @@ import {
   changeMemberRole,
   createWorkspace,
   inviteWorkspaceMember,
+  inviteWorkspaceMembersBatch,
   removeWorkspaceMember,
   renameWorkspace,
 } from "@/modules/workspaces/workspace.service";
@@ -40,8 +41,12 @@ export async function createWorkspaceAction(
 ): Promise<ActionResult> {
   try {
     const user = await requireUser();
+    const name = String(formData.get("name") ?? "");
+    const iconRaw = formData.get("icon");
+    const icon = typeof iconRaw === "string" && iconRaw.trim() ? iconRaw.trim() : undefined;
     const ws = await createWorkspace(user.id, {
-      name: String(formData.get("name") ?? ""),
+      name,
+      icon,
     });
     redirect(`/w/${ws.slug}`);
   } catch (error) {
@@ -85,6 +90,29 @@ export async function inviteMemberAction(
     const data = await inviteWorkspaceMember(workspaceId, user.id, {
       email: String(formData.get("email") ?? ""),
       role: String(formData.get("role") ?? "MEMBER"),
+    });
+    return okAction(data);
+  } catch (error) {
+    return failAction(error, "workspace_action_error");
+  }
+}
+
+export async function inviteMembersBatchAction(input: {
+  workspaceId: string;
+  emails: string[];
+  role: "ADMIN" | "MEMBER" | "GUEST";
+  scope: "workspace" | "page";
+  pageId?: string;
+  pagePermission?: "view" | "comment" | "edit" | "full";
+}): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const data = await inviteWorkspaceMembersBatch(input.workspaceId, user.id, {
+      emails: input.emails,
+      role: input.role,
+      scope: input.scope,
+      pageId: input.pageId,
+      pagePermission: input.pagePermission,
     });
     return okAction(data);
   } catch (error) {

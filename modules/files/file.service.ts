@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { RowDataPacket } from "mysql2";
 import {
   buildObjectKey,
   createPresignedDownloadUrl,
@@ -8,7 +7,14 @@ import {
   getSpacesBucket,
   objectExists,
 } from "@/infrastructure/storage/spaces";
-import { execute, query } from "@/infrastructure/database/connection";
+import {
+  findFileByIdAndWorkspace,
+  findOrphanPendingFiles,
+  insertPendingFile,
+  markFileDeleted,
+  markFileFailedAndDeleted,
+  updateFileStatus,
+} from "@/modules/files/file.repository";
 import { getEnv, isSpacesConfigured } from "@/shared/env";
 import {
   externalServiceError,
@@ -170,24 +176,16 @@ export async function createUploadUrl(userId: string, raw: unknown) {
   });
   const bucket = getSpacesBucket();
 
-  await execute(
-    `INSERT INTO tbl_files
-      (id, workspace_id, uploaded_by, storage_provider, bucket, object_key,
-       original_filename, content_type, size_bytes, status)
-     VALUES
-      (:id, :workspaceId, :uploadedBy, 'do_spaces', :bucket, :objectKey,
-       :filename, :contentType, :sizeBytes, 'pending')`,
-    {
-      id: fileId,
-      workspaceId: parsed.data.workspaceId,
-      uploadedBy: userId,
-      bucket,
-      objectKey,
-      filename: parsed.data.filename,
-      contentType: parsed.data.contentType,
-      sizeBytes: parsed.data.sizeBytes,
-    }
-  );
+  await insertPendingFile({
+    id: fileId,
+    workspaceId: parsed.data.workspaceId,
+    uploadedBy: userId,
+    bucket,
+    objectKey,
+    filename: parsed.data.filename,
+    contentType: parsed.data.contentType,
+    sizeBytes: parsed.data.sizeBytes,
+  });
 
   const uploadUrl = await createPresignedUploadUrl({
     objectKey,
@@ -216,25 +214,11 @@ export async function markFileFailed(
       permission: "files.upload",
     });
   }
-  type FileRow = RowDataPacket & {
-    object_key: string;
-    status: string;
-  };
-  const rows = await query<FileRow[]>(
-    `SELECT object_key, status FROM tbl_files
-     WHERE id = :fileId AND workspace_id = :workspaceId AND deleted_at IS NULL
-     LIMIT 1`,
-    { fileId, workspaceId }
-  );
-  const file = rows[0];
+
+  const file = await findFileByIdAndWorkspace(fileId, workspaceId);
   if (!file) return;
 
-  await execute(
-    `UPDATE tbl_files
-     SET status = 'failed', deleted_at = CURRENT_TIMESTAMP(3)
-     WHERE id = :fileId AND workspace_id = :workspaceId`,
-    { fileId, workspaceId }
-  );
+  await markFileFailedAndDeleted(fileId, workspaceId);
 
   try {
     await deleteObject(file.object_key);
@@ -257,20 +241,7 @@ export async function confirmUpload(
     permission: "files.upload",
   });
 
-  type FileRow = RowDataPacket & {
-    id: string;
-    workspace_id: string;
-    status: string;
-    object_key: string;
-  };
-
-  const rows = await query<FileRow[]>(
-    `SELECT id, workspace_id, status, object_key FROM tbl_files
-     WHERE id = :fileId AND workspace_id = :workspaceId AND deleted_at IS NULL
-     LIMIT 1`,
-    { fileId, workspaceId }
-  );
-  const file = rows[0];
+  const file = await findFileByIdAndWorkspace(fileId, workspaceId);
   if (!file) throw notFoundError("File not found");
 
   const exists = await objectExists(file.object_key);
@@ -279,10 +250,7 @@ export async function confirmUpload(
     throw validationError("Uploaded file was not found in storage");
   }
 
-  await execute(
-    `UPDATE tbl_files SET status = 'ready' WHERE id = :fileId AND workspace_id = :workspaceId`,
-    { fileId, workspaceId }
-  );
+  await updateFileStatus(fileId, workspaceId, "ready");
 
   return { fileId, status: "ready" as const };
 }
@@ -298,19 +266,7 @@ export async function getDownloadUrl(
     permission: "workspace.read",
   });
 
-  type FileRow = RowDataPacket & {
-    id: string;
-    object_key: string;
-    status: string;
-  };
-
-  const rows = await query<FileRow[]>(
-    `SELECT id, object_key, status FROM tbl_files
-     WHERE id = :fileId AND workspace_id = :workspaceId AND deleted_at IS NULL
-     LIMIT 1`,
-    { fileId, workspaceId }
-  );
-  const file = rows[0];
+  const file = await findFileByIdAndWorkspace(fileId, workspaceId);
   if (!file || file.status !== "ready") throw notFoundError("File not found");
 
   const signed = await createPresignedDownloadUrl({
@@ -326,27 +282,11 @@ export async function getDownloadUrlForObjectKey(objectKey: string) {
 }
 
 export async function cleanupStaleFile(fileId: string, workspaceId: string) {
-  type FileRow = RowDataPacket & {
-    id: string;
-    object_key: string;
-    status: string;
-  };
-  const rows = await query<FileRow[]>(
-    `SELECT id, object_key, status FROM tbl_files
-     WHERE id = :fileId AND workspace_id = :workspaceId AND deleted_at IS NULL
-     LIMIT 1`,
-    { fileId, workspaceId }
-  );
-  const file = rows[0];
+  const file = await findFileByIdAndWorkspace(fileId, workspaceId);
   if (!file) return;
   if (file.status === "ready") return;
 
-  await execute(
-    `UPDATE tbl_files
-     SET status = 'deleted', deleted_at = CURRENT_TIMESTAMP(3)
-     WHERE id = :fileId`,
-    { fileId }
-  );
+  await markFileDeleted(fileId);
   try {
     await deleteObject(file.object_key);
   } catch (error) {
@@ -358,19 +298,7 @@ export async function cleanupStaleFile(fileId: string, workspaceId: string) {
 }
 
 export async function cleanupOrphanPendingFiles(olderThanHours = 1) {
-  type FileRow = RowDataPacket & {
-    id: string;
-    workspace_id: string;
-    object_key: string;
-  };
-  const rows = await query<FileRow[]>(
-    `SELECT id, workspace_id, object_key FROM tbl_files
-     WHERE status IN ('pending', 'failed')
-       AND deleted_at IS NULL
-       AND created_at < DATE_SUB(NOW(), INTERVAL :hours HOUR)
-     LIMIT 100`,
-    { hours: olderThanHours }
-  );
+  const rows = await findOrphanPendingFiles(olderThanHours);
   for (const row of rows) {
     await cleanupStaleFile(row.id, row.workspace_id);
   }
@@ -381,14 +309,7 @@ export async function assertReadyFileInWorkspace(
   fileId: string,
   workspaceId: string
 ) {
-  type FileRow = RowDataPacket & { id: string; status: string };
-  const rows = await query<FileRow[]>(
-    `SELECT id, status FROM tbl_files
-     WHERE id = :fileId AND workspace_id = :workspaceId AND deleted_at IS NULL
-     LIMIT 1`,
-    { fileId, workspaceId }
-  );
-  const file = rows[0];
+  const file = await findFileByIdAndWorkspace(fileId, workspaceId);
   if (!file || file.status !== "ready") {
     throw validationError("Attachment is not ready");
   }

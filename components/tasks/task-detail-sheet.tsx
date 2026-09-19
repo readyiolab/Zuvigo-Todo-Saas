@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Copy, MoreHorizontal, Trash2, X } from "lucide-react";
+import { ArrowLeft, Copy, Maximize2, MoreHorizontal, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteTaskAction,
@@ -108,40 +108,35 @@ export function TaskDetailSheet({
         <SheetContent
           side="right"
           showCloseButton={false}
-          className="flex w-full flex-col gap-0 rounded-none border-l border-border/50 bg-background p-0 shadow-none sm:max-w-[min(100vw,820px)] data-[side=right]:sm:max-w-[min(100vw,820px)]"
+          className="flex w-full flex-col gap-0 border-l border-border bg-background p-0 shadow-2xl transition-all sm:max-w-xl md:max-w-2xl"
         >
           <SheetTitle className="sr-only">{task?.title || "Task"}</SheetTitle>
 
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/50 px-3 sm:px-4">
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              className="size-8 shrink-0 text-muted-foreground"
-              aria-label="Back to tasks"
-              onClick={close}
-            >
-              <ArrowLeft className="size-4" />
-            </Button>
-
-            <nav className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
-              <Link
-                href={`/w/${workspaceSlug}/tasks`}
-                className="hover:text-foreground"
-                onClick={(e) => {
-                  e.preventDefault();
-                  close();
-                }}
-              >
-                Tasks
-              </Link>
-              <span className="mx-1.5 text-border">/</span>
-              <span className="text-foreground/80">
-                {projectName ? `@${projectName}` : "Inbox"}
+          <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background px-5 sm:px-6">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-xs font-semibold text-foreground">
+                Task Details
               </span>
-            </nav>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="truncate rounded-md bg-muted/60 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {projectName ? projectName : "Inbox"}
+              </span>
+            </div>
 
-            <div className="flex shrink-0 items-center gap-0.5">
+            <div className="flex shrink-0 items-center gap-1">
+              {task ? (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label="Open as full page"
+                  title="Open full page"
+                  render={<Link href={`/w/${workspaceSlug}/tasks/${task.id}`} />}
+                >
+                  <Maximize2 className="size-4" />
+                </Button>
+              ) : null}
+
               {task ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger
@@ -149,7 +144,7 @@ export function TaskDetailSheet({
                       <Button
                         size="icon-sm"
                         variant="ghost"
-                        className="size-8 text-muted-foreground"
+                        className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                         aria-label="More actions"
                         disabled={pending}
                       />
@@ -157,8 +152,9 @@ export function TaskDetailSheet({
                   >
                     <MoreHorizontal className="size-4" />
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="w-44 text-xs shadow-md">
                     <DropdownMenuItem
+                      className="cursor-pointer"
                       onClick={() => {
                         startTransition(async () => {
                           const result = await duplicateTaskAction({
@@ -172,14 +168,15 @@ export function TaskDetailSheet({
                         });
                       }}
                     >
-                      <Copy className="size-3.5" /> Duplicate
+                      <Copy className="mr-2 size-3.5" /> Duplicate task
                     </DropdownMenuItem>
                     {canDelete ? (
                       <DropdownMenuItem
                         variant="destructive"
+                        className="cursor-pointer"
                         onClick={() => setDeleteOpen(true)}
                       >
-                        <Trash2 className="size-3.5" /> Delete
+                        <Trash2 className="mr-2 size-3.5" /> Delete task
                       </DropdownMenuItem>
                     ) : null}
                   </DropdownMenuContent>
@@ -191,7 +188,7 @@ export function TaskDetailSheet({
                   <Button
                     size="icon-sm"
                     variant="ghost"
-                    className="size-8 text-muted-foreground"
+                    className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                     aria-label="Close"
                   />
                 }
@@ -201,7 +198,7 @@ export function TaskDetailSheet({
             </div>
           </header>
 
-          <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+          <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-6">
             {task ? (
               <TaskDetail
                 key={`${task.id}-${task.updatedAt}`}

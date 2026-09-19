@@ -18,6 +18,25 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
+interface TableCommandsChain {
+  insertTable: (options: { rows: number; cols: number; withHeaderRow: boolean }) => TableCommandsChain;
+  addColumnBefore: () => TableCommandsChain;
+  addColumnAfter: () => TableCommandsChain;
+  deleteColumn: () => TableCommandsChain;
+  addRowBefore: () => TableCommandsChain;
+  addRowAfter: () => TableCommandsChain;
+  deleteRow: () => TableCommandsChain;
+  toggleHeaderRow: () => TableCommandsChain;
+  toggleHeaderColumn: () => TableCommandsChain;
+  mergeOrSplit: () => TableCommandsChain;
+  deleteTable: () => TableCommandsChain;
+  run: () => boolean;
+}
+
+function getTableChain(editor: Editor): TableCommandsChain {
+  return editor.chain().focus() as unknown as TableCommandsChain;
+}
+
 export function TableMenuDropdown({ editor }: { editor: Editor }) {
   const isTableActive = editor.isActive("table");
 
@@ -29,7 +48,7 @@ export function TableMenuDropdown({ editor }: { editor: Editor }) {
         variant="ghost"
         className="h-8 gap-1 px-2 text-xs"
         onClick={() => {
-          (editor.chain().focus() as any)
+          getTableChain(editor)
             .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
             .run();
         }}
@@ -61,19 +80,19 @@ export function TableMenuDropdown({ editor }: { editor: Editor }) {
           Columns
         </div>
         <DropdownMenuItem
-          onClick={() => (editor.chain().focus() as any).addColumnBefore().run()}
+          onClick={() => getTableChain(editor).addColumnBefore().run()}
         >
           <Plus className="size-3.5 mr-1 text-muted-foreground" />
           Add column before
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => (editor.chain().focus() as any).addColumnAfter().run()}
+          onClick={() => getTableChain(editor).addColumnAfter().run()}
         >
           <Plus className="size-3.5 mr-1 text-muted-foreground" />
           Add column after
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => (editor.chain().focus() as any).deleteColumn().run()}
+          onClick={() => getTableChain(editor).deleteColumn().run()}
           className="text-destructive focus:bg-destructive/10 focus:text-destructive"
         >
           <Columns className="size-3.5 mr-1" />
@@ -86,19 +105,19 @@ export function TableMenuDropdown({ editor }: { editor: Editor }) {
           Rows
         </div>
         <DropdownMenuItem
-          onClick={() => (editor.chain().focus() as any).addRowBefore().run()}
+          onClick={() => getTableChain(editor).addRowBefore().run()}
         >
           <Plus className="size-3.5 mr-1 text-muted-foreground" />
           Add row before
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => (editor.chain().focus() as any).addRowAfter().run()}
+          onClick={() => getTableChain(editor).addRowAfter().run()}
         >
           <Plus className="size-3.5 mr-1 text-muted-foreground" />
           Add row after
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => (editor.chain().focus() as any).deleteRow().run()}
+          onClick={() => getTableChain(editor).deleteRow().run()}
           className="text-destructive focus:bg-destructive/10 focus:text-destructive"
         >
           <Rows className="size-3.5 mr-1" />
@@ -111,17 +130,17 @@ export function TableMenuDropdown({ editor }: { editor: Editor }) {
           Cells & Headers
         </div>
         <DropdownMenuItem
-          onClick={() => (editor.chain().focus() as any).toggleHeaderRow().run()}
+          onClick={() => getTableChain(editor).toggleHeaderRow().run()}
         >
           Toggle header row
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => (editor.chain().focus() as any).toggleHeaderColumn().run()}
+          onClick={() => getTableChain(editor).toggleHeaderColumn().run()}
         >
           Toggle header column
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => (editor.chain().focus() as any).mergeOrSplit().run()}
+          onClick={() => getTableChain(editor).mergeOrSplit().run()}
         >
           <Split className="size-3.5 mr-1 text-muted-foreground" />
           Merge / Split cells
@@ -130,7 +149,7 @@ export function TableMenuDropdown({ editor }: { editor: Editor }) {
         <DropdownMenuSeparator />
 
         <DropdownMenuItem
-          onClick={() => (editor.chain().focus() as any).deleteTable().run()}
+          onClick={() => getTableChain(editor).deleteTable().run()}
           className="text-destructive focus:bg-destructive/10 focus:text-destructive font-medium"
         >
           <Trash2 className="size-3.5 mr-1" />

@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -19,11 +18,11 @@ export function TaskSection({
   action?: ReactNode;
 }) {
   return (
-    <section className={cn("space-y-3", className)}>
+    <section className={cn("space-y-3.5", className)}>
       <div className="flex items-center justify-between gap-3">
         <h3
           className={cn(
-            "text-[15px] font-semibold tracking-tight text-foreground",
+            "text-sm font-semibold tracking-tight text-foreground",
             muted && "text-muted-foreground"
           )}
         >
@@ -67,11 +66,13 @@ export function TaskEmptyState({
 
 export function TaskPropertyRow({
   label,
+  icon,
   children,
   interactive = true,
   className,
 }: {
   label: string;
+  icon?: ReactNode;
   children: ReactNode;
   interactive?: boolean;
   className?: string;
@@ -79,19 +80,21 @@ export function TaskPropertyRow({
   return (
     <div
       className={cn(
-        "group flex min-h-9 items-center gap-2 rounded-md px-1.5 py-1 transition-colors",
-        interactive && "hover:bg-muted/35",
+        "group flex min-h-9 items-center gap-3 rounded-lg px-2.5 py-1 transition-colors",
+        interactive && "hover:bg-muted/40",
         className
       )}
     >
-      <div className="w-[5.5rem] shrink-0 text-[12px] text-muted-foreground">
-        {label}
-      </div>
-      <div className="flex min-w-0 flex-1 items-center justify-end gap-1 text-right text-[13px] text-foreground">
-        {children}
-        {interactive ? (
-          <ChevronRight className="size-3 shrink-0 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100" />
+      <div className="flex w-32 shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">
+        {icon ? (
+          <span className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden>
+            {icon}
+          </span>
         ) : null}
+        <span className="truncate">{label}</span>
+      </div>
+      <div className="flex min-w-0 flex-1 items-center justify-start text-left text-xs text-foreground">
+        {children}
       </div>
     </div>
   );
