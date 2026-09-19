@@ -1,9 +1,13 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { getSessionUser } from "@/modules/auth/auth.service";
 
 export default async function MarketingPage() {
   const user = await getSessionUser();
+  if (user) {
+    redirect("/w");
+  }
 
   return (
     <div className="min-h-full">

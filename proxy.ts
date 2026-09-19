@@ -11,10 +11,17 @@ function isPlausibleSessionToken(token: string | undefined): boolean {
   return /^sess_[A-Za-z0-9]+$/.test(token);
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const isAuthed = isPlausibleSessionToken(token);
+
+  // If visiting root "/" and authenticated, redirect straight to workspace
+  if (pathname === "/" && isAuthed) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/w";
+    return NextResponse.redirect(url);
+  }
 
   const isAuthPage =
     pathname.startsWith("/login") || pathname.startsWith("/signup");
@@ -57,6 +64,7 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/",
     "/w/:path*",
     "/login",
     "/signup",
